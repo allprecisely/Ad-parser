@@ -33,7 +33,6 @@ def lambda_handler(event, context):
         return
 
     new_variants = get_new_variants(bot, current_search)
-    bot.send_message(text=f's-th went wrong: {exc}', chat_id=STORAGE_CHAT_ID)
     for variant in new_variants.values():
         image = requests.get(variant['image']).content
         bot.send_location(
@@ -66,7 +65,7 @@ def get_new_variants(bot: telegram.Bot, current_search):
         prev_msg = bot.get_chat(chat_id=STORAGE_CHAT_ID).description
         if prev_msg:
             msg = bot.edit_message_caption(
-                caption=uuid4(), chat_id=STORAGE_CHAT_ID, message_id=prev_msg
+                caption=str(uuid4()), chat_id=STORAGE_CHAT_ID, message_id=prev_msg
             )
             previous_search = set(
                 msg.document.get_file().download_as_bytearray().decode().split()
@@ -81,7 +80,7 @@ def get_new_variants(bot: telegram.Bot, current_search):
         else:
             msg = bot.send_document(
                 document=' '.join(current_search),
-                caption=uuid4(),
+                caption=str(uuid4()),
                 chat_id=STORAGE_CHAT_ID,
             )
             bot.set_chat_description(
