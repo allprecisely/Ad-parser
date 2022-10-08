@@ -1,5 +1,5 @@
 import os
-from uuid import uuid4
+from datetime import datetime
 
 from dotenv import load_dotenv
 import requests
@@ -12,7 +12,7 @@ CHAT_ID = os.environ['CHAT_ID']
 STORAGE_CHAT_ID = os.environ['STORAGE_CHAT_ID']
 TOKEN = os.environ['TOKEN']
 BAZARIKI_URL = 'https://www.bazaraki.com'
-FILTER = '?type_view=line&rubric=681&c=860&ordering=&q=&price_max=1500&attrs__area_min=30&cities=12&'
+FILTER = '?rubric=681&c=548&ordering=&q=&price_max=1500&attrs__furnishing=1&attrs__furnishing=2&attrs__area_min=30&cities=12'
 DUMP_FILE = 'previous_search.txt'
 TEMPLATE_DESCRIPTION = '''{title}
 price: {price}
@@ -20,7 +20,9 @@ distance to office: {distance:.1f} km
 
 =========================
 '''
-OFFICE_POINT = float(os.environ['OFFICE_POINT_LATITUDE']), float(os.environ['OFFICE_POINT_LONGITUDE'])
+OFFICE_POINT = float(os.environ['OFFICE_POINT_LATITUDE']), float(
+    os.environ['OFFICE_POINT_LONGITUDE']
+)
 LOCAL_STORAGE = False
 MAX_DISTANCE = 5
 
@@ -57,6 +59,7 @@ def lambda_handler(event, context):
 
 def get_new_variants(bot: telegram.Bot, current_search):
     previous_search = set()
+    prev_msg = None
     if LOCAL_STORAGE:
         if os.path.isfile(DUMP_FILE):
             with open(DUMP_FILE) as _file:
@@ -64,12 +67,19 @@ def get_new_variants(bot: telegram.Bot, current_search):
     else:
         prev_msg = bot.get_chat(chat_id=STORAGE_CHAT_ID).description
         if prev_msg:
-            msg = bot.edit_message_caption(
-                caption=str(uuid4()), chat_id=STORAGE_CHAT_ID, message_id=prev_msg
-            )
-            previous_search = set(
-                msg.document.get_file().download_as_bytearray().decode().split()
-            )
+            try:
+                msg = bot.edit_message_caption(
+                    caption=str(datetime.now()),
+                    chat_id=STORAGE_CHAT_ID,
+                    message_id=prev_msg,
+                )
+                previous_search = set(
+                    msg.document.get_file().download_as_bytearray().decode().split()
+                )
+            except:
+                bot.send_message(
+                    text=f'prev msg incorrect: {exc}', chat_id=STORAGE_CHAT_ID
+                )
 
     new_variants = {k: v for k, v in current_search.items() if k not in previous_search}
 
@@ -79,13 +89,20 @@ def get_new_variants(bot: telegram.Bot, current_search):
                 _file.write(' '.join(current_search))
         else:
             msg = bot.send_document(
-                document=' '.join(current_search),
-                caption=str(uuid4()),
+                document=' '.join(current_search).encode(),
+                caption=str(datetime.now()),
                 chat_id=STORAGE_CHAT_ID,
             )
             bot.set_chat_description(
                 description=str(msg.message_id), chat_id=STORAGE_CHAT_ID
             )
+            if prev_msg:
+                try:
+                    bot.delete_message(chat_id=STORAGE_CHAT_ID, message_id=int(prev_msg))
+                except:
+                    bot.send_message(
+                        text=f'prev msg incorrect: {exc}', chat_id=STORAGE_CHAT_ID
+                    )
     return new_variants if previous_search else {}
 
 
@@ -97,7 +114,10 @@ def check_site():
     for i in response.json()['results']:
         if i['image']:
             distance = distance_counter.haversine(OFFICE_POINT, i['geometry'])
-            if distance <= MAX_DISTANCE:
+            if (
+                distance <= MAX_DISTANCE
+                and int(i['price'][1:].replace('.', '').strip()) <= 1200
+            ):
                 result[str(i['id'])] = {
                     'title': i['title'],
                     'price': i['price'],
@@ -115,4 +135,6 @@ if __name__ == '__main__':
         lambda_handler(None, None)
     except Exception as exc:
         bot = telegram.Bot(TOKEN)
-        bot.send_message(text=f'@gilfanovii s-th went wrong: {exc}', chat_id=STORAGE_CHAT_ID)
+        bot.send_message(
+            text=f'@gilfanovii s-th went wrong: {exc}', chat_id=STORAGE_CHAT_ID
+        )
