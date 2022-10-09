@@ -43,9 +43,7 @@ def lambda_handler(event, context):
         return
 
     new_variants = get_new_variants(bot, current_search)
-    print(7, datetime.now())
     for variant in new_variants.values():
-        print(3)
         image = requests.get(variant['image']).content
         variant['distance'] = (
             DISTANCE_TEXT.format(**variant) if 'distance' in variant else ''
@@ -68,7 +66,6 @@ def lambda_handler(event, context):
             ],
             chat_id=CHAT_ID,
         )
-        print(4)
 
 
 def get_new_variants(bot: telegram.Bot, current_search):
@@ -132,7 +129,6 @@ def get_new_variants(bot: telegram.Bot, current_search):
 
 
 def check_site():
-    print(datetime.now())
     url = f'{BAZARIKI_URL}/real-estate/houses-and-villas-rent/{RAW_FILTER}'
     items = parse_bazariki(requests.get(url))
 
@@ -142,19 +138,13 @@ def check_site():
         if float(v['price']) <= MAX_PRICE and 'Limassol' in v['areaServed']
     }
 
-    print(5)
-    print(datetime.now())
     url = f'{BAZARIKI_URL}/api/items/adverts-geometry/{API_FILTER}'
     response = requests.get(url)
-    print(6)
-    print(datetime.now())
 
     for i in response.json()['results']:
         if str(i['id']) in items:
             distance = distance_counter.haversine(OFFICE_POINT, i['geometry'])
             items[str(i['id'])]['distance'] = distance
-    print(7)
-    print(datetime.now())
 
     return items
 
