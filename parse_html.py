@@ -5,7 +5,6 @@ from requests import Response
 
 
 def parse_bazariki(response: Response):
-    print(1)
     if not response or response.status_code >= 400:
         return {}
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -33,5 +32,4 @@ def parse_bazariki(response: Response):
 
         for meta in li.findAll('meta'):
             items[_id][meta['itemprop']] = meta['content']
-    print(2)
     return items
