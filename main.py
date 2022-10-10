@@ -67,7 +67,7 @@ def lambda_handler(event, context):
 
     send_new_variants(bot, new_variants, curr_variants)
     update_deleted_variants(bot, deleted_variants)
-    save_new_variants(bot, new_variants, curr_variants)
+    save_new_variants(bot, new_variants, deleted_variants, curr_variants)
 
 
 def send_new_variants(bot, new_variants, curr_variants):
@@ -117,25 +117,28 @@ def update_deleted_variants(bot: telegram.Bot, deleted_variants):
         ))
 
 def get_prev_variants(bot: telegram.Bot):
-    prev_msg = bot.get_chat(chat_id=STORAGE_CHAT_ID)
-    if not prev_msg:
+    chat = bot.get_chat(chat_id=STORAGE_CHAT_ID)
+    if not chat:
         bot.send_message(
             text=f'could not find prev msg: {exc}', chat_id=STORAGE_CHAT_ID
         )
+        logger.info('no prev msg')
         exit(0)
-    if 'new' in prev_msg.title.lower():
+    if 'new' in chat.title.lower():
         return {}
     msg = catch_exception(bot, bot.edit_message_caption, dict(
         caption=str(datetime.now()),
         chat_id=STORAGE_CHAT_ID,
-        message_id=prev_msg.title[len('GII bot storage '):],
+        message_id=chat.title[len('GII bot storage '):],
     ))
+    logger.info('prev msg edited')
     if msg:
         prev_variants = catch_exception(bot, json.loads, dict(
             s=msg.document.get_file().download_as_bytearray()
         ))
         if prev_variants:
             return prev_variants
+    logger.info('no prev variants')
     exit(0)
 
 
@@ -150,6 +153,7 @@ def get_new_variants(prev_variants, curr_variants):
             new_variants[k] = {**v, 'price_lowered': ' (lowered)'}
         if i == 10:
             break
+    logger.info(f'new variants {new_variants}')
     return new_variants
 
 
@@ -157,8 +161,8 @@ def get_deleted_variants(prev_variants, curr_variants):
     return {k: v for k, v in prev_variants.items() if k not in curr_variants and 'msg_id' in v}
 
 
-def save_new_variants(bot: telegram.Bot, new_variants, curr_variants):
-    if not new_variants:
+def save_new_variants(bot: telegram.Bot, new_variants, deleted_variants, curr_variants):
+    if not new_variants or deleted_variants:
         return
     with io.StringIO() as _file:
         json.dump(curr_variants, _file, indent=4)
@@ -169,19 +173,14 @@ def save_new_variants(bot: telegram.Bot, new_variants, curr_variants):
             caption=str(datetime.now()),
             chat_id=STORAGE_CHAT_ID,
         ))
-    prev_msg = catch_exception(bot, bot.get_chat, dict(chat_id=STORAGE_CHAT_ID))
-    if prev_msg:
-        if 'new' not in prev_msg.title:
-            catch_exception(bot, bot.delete_message, dict(
-                chat_id=STORAGE_CHAT_ID, message_id=int(prev_msg.title[len('GII bot storage ')])
-            ))
+    chat = catch_exception(bot, bot.get_chat, dict(chat_id=STORAGE_CHAT_ID))
+    if chat and 'new' not in chat.title:
+        catch_exception(bot, bot.delete_message, dict(
+            chat_id=STORAGE_CHAT_ID, message_id=int(chat.title[len('GII bot storage '):])
+        ))
     catch_exception(bot, bot.set_chat_title, dict(
         title=f'GII bot storage {msg.message_id}', chat_id=STORAGE_CHAT_ID
     ))
-    if prev_msg and 'new' not in prev_msg.title:
-        catch_exception(bot, bot.delete_message, dict(
-            chat_id=STORAGE_CHAT_ID, message_id=int(prev_msg)
-        ))
 
 
 def check_site(bot):
@@ -189,6 +188,7 @@ def check_site(bot):
     resp_http = catch_exception(bot, requests.get, {'url': url_http})
     items = parse_bazariki(resp_http)
     if not items:
+        logger.info('no new items')
         exit()
 
     items = {
@@ -211,6 +211,9 @@ def check_site(bot):
 
 
 if __name__ == '__main__':
+    logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    logger.addHandler(ch)
     try:
         lambda_handler(None, None)
     except Exception as exc:
