@@ -42,7 +42,7 @@ class Bazaraki:
         deleted_variants = self.get_deleted_variants(prev_variants, curr_variants)
 
         self.send_new_variants(new_variants, curr_variants)
-        self.update_deleted_variants(deleted_variants)
+        # self.update_deleted_variants(deleted_variants)
         if new_variants or deleted_variants:
             self.save_curr_variants(prev_variants, curr_variants)
 
@@ -139,6 +139,17 @@ class Bazaraki:
                 ),
                 self.logger,
             )
+            if v['price'] <= 1200:
+                run_with_retries(
+                    self.bot,
+                    self.bot.send_media_group,
+                    dict(
+                        media=[image_with_caption] + other_images,
+                        chat_id='-1001838129908',
+                        disable_notification=DISABLE_NOTIFICATIONS,
+                    ),
+                    self.logger,
+                )
             if msgs:
                 curr_variants[k]['msg_id'] = str(msgs[0].message_id)
             else:
