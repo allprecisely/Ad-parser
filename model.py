@@ -38,8 +38,6 @@ class Bazaraki:
         self.logger.info(f'Start handling {self.category}')
         curr_variants = self.get_curr_variants()
         prev_variants = self.get_prev_variants()
-        for k, v in prev_variants.items():
-            print(k, v.keys())
         new_variants = self.get_new_variants(prev_variants, curr_variants)
         deleted_variants = self.get_deleted_variants(prev_variants, curr_variants)
 
