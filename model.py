@@ -2,7 +2,6 @@ import io
 import json
 import logging
 from datetime import datetime
-import time
 from typing import Dict
 
 import requests
@@ -39,13 +38,15 @@ class Bazaraki:
         self.logger.info(f'Start handling {self.category}')
         curr_variants = self.get_curr_variants()
         prev_variants = self.get_prev_variants()
+        for k, v in prev_variants.items():
+            print(k, v.keys())
         new_variants = self.get_new_variants(prev_variants, curr_variants)
         deleted_variants = self.get_deleted_variants(prev_variants, curr_variants)
 
         self.send_new_variants(new_variants, curr_variants)
         self.update_deleted_variants(deleted_variants)
         if new_variants or deleted_variants:
-            self.save_curr_variants(prev_variants, new_variants)
+            self.save_curr_variants(prev_variants, curr_variants)
 
     def get_curr_variants(self) -> Dict[str, str]:
         resp_http = run_with_retries(
@@ -107,7 +108,12 @@ class Bazaraki:
     def send_new_variants(
         self, new_variants: Dict[str, str], curr_variants: Dict[str, str]
     ) -> None:
-        for i, (k, v) in enumerate(reversed(new_variants.items()), 1):
+        if DEBUG or len(new_variants) > 20:
+            self.logger.info(
+                'send_new_variants skip: %s, %s', len(new_variants), new_variants.keys()
+            )
+            return
+        for k, v in reversed(new_variants.items()):
             resp_images = run_with_retries(
                 self.bot, requests.get, {'url': v['url']}, self.logger
             )
@@ -141,6 +147,9 @@ class Bazaraki:
                 self.logger.error(f'{k} variant was not loaded')
 
     def update_deleted_variants(self, deleted_variants: Dict[str, str]) -> None:
+        if DEBUG:
+            self.logger.info('delete_variants: %s', deleted_variants.keys())
+            return
         for v in deleted_variants.values():
             if 'msg_id' not in v:
                 continue
@@ -164,6 +173,15 @@ class Bazaraki:
     def save_curr_variants(
         self, prev_variants: Dict[str, str], curr_variants: Dict[str, str]
     ) -> None:
+        if DEBUG:
+            self.logger.info(
+                'send_document: %s',
+                {
+                    k: v.keys()
+                    for k, v in {**prev_variants, self.category: curr_variants}.items()
+                },
+            )
+            return
         with io.StringIO() as _file:
             json.dump(
                 {**prev_variants, self.category: curr_variants},

@@ -13,3 +13,4 @@ date: {date}{distance}{description}
 
 '''
 DISABLE_NOTIFICATIONS = os.getenv('DISABLE_NOTIFICATIONS') == 'True'
+DEBUG = os.getenv('DEBUG') == 'True'

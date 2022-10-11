@@ -11,7 +11,7 @@ from utils import run_with_retries
 import distance_counter
 
 CHAT_ID_APPARTMENTS = os.environ['CHAT_ID_APPARTAMENTS']
-MAX_PRICE = 1200
+MAX_PRICE = 1800
 API_FILTER_APPARTMENTS = (
     '?rubric=681&c=1133&ordering=newest&q=&attrs__furnishing=1&attrs__furnishing=2&'
     'attrs__area_min=30&city_districts=5738&city_districts=5008&city_districts=5515&'
@@ -51,7 +51,11 @@ logger = logging.getLogger(__name__)
 class AppartmentBazaraki(Bazaraki):
     def get_curr_variants(self) -> Dict[str, str]:
         items = super().get_curr_variants()
-        items = {k: v for k, v in items.items() if 'Limassol' in v['areaServed']}
+        items = {
+            k: v
+            for k, v in items.items()
+            if 'Limassol' in v['areaServed'] and v['price'] <= MAX_PRICE
+        }
         try:
             url_api = f'{BAZARIKI_URL}/{BAZARAKI_CATEGORY_API_APPARTMENTS}/{API_FILTER_APPARTMENTS}'
             resp_api = run_with_retries(
@@ -70,6 +74,7 @@ class AppartmentBazaraki(Bazaraki):
 def lambda_handler(event, context):
     logger.setLevel(logging.INFO)
     logger.addHandler(logging.StreamHandler())
+    logger.info(f'{DEBUG = }')
     handler = AppartmentBazaraki(
         logger,
         f'{BAZARIKI_URL}/{BAZARAKI_CATEGORY_APPARTMENTS}/{RAW_FILTER_APPARTMENTS}',
