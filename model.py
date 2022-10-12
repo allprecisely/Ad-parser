@@ -1,3 +1,4 @@
+from copy import deepcopy
 import io
 import json
 import logging
@@ -39,12 +40,12 @@ class Bazaraki:
         curr_variants = self.get_curr_variants()
         prev_variants = self.get_prev_variants()
         new_variants = self.get_new_variants(prev_variants, curr_variants)
-        deleted_variants = self.get_deleted_variants(prev_variants, curr_variants)
+        # deleted_variants = self.get_deleted_variants(prev_variants, curr_variants)
 
-        self.send_new_variants(new_variants, curr_variants)
+        self.send_new_variants(new_variants)
         # self.update_deleted_variants(deleted_variants)
-        if new_variants or deleted_variants:
-            self.save_curr_variants(prev_variants, curr_variants)
+        if new_variants:
+            self.save_new_variants(prev_variants, new_variants)
 
     def get_curr_variants(self) -> Dict[str, str]:
         resp_http = run_with_retries(
@@ -103,10 +104,8 @@ class Bazaraki:
             if k not in curr_variants and 'msg_id' in v
         }
 
-    def send_new_variants(
-        self, new_variants: Dict[str, str], curr_variants: Dict[str, str]
-    ) -> None:
-        if DEBUG or len(new_variants) > 20:
+    def send_new_variants(self, new_variants: Dict[str, str]) -> None:
+        if DEBUG or len(new_variants) > 10:
             self.logger.info(
                 'send_new_variants skip: %s, %s', len(new_variants), new_variants.keys()
             )
@@ -139,6 +138,7 @@ class Bazaraki:
                 ),
                 self.logger,
             )
+            # chat for myself
             if v['price'] <= 1200:
                 run_with_retries(
                     self.bot,
@@ -151,7 +151,7 @@ class Bazaraki:
                     self.logger,
                 )
             if msgs:
-                curr_variants[k]['msg_id'] = str(msgs[0].message_id)
+                new_variants[k]['msg_id'] = str(msgs[0].message_id)
             else:
                 self.logger.error(f'{k} variant was not loaded')
 
@@ -179,24 +179,23 @@ class Bazaraki:
                 self.logger,
             )
 
-    def save_curr_variants(
-        self, prev_variants: Dict[str, str], curr_variants: Dict[str, str]
+    def save_new_variants(
+        self, prev_variants: Dict[str, str], new_variants: Dict[str, str]
     ) -> None:
+        updated_variants = deepcopy(prev_variants)
+        updated_variants[self.category] = {
+            **prev_variants[self.category],
+            **new_variants,
+        }
         if DEBUG:
             self.logger.info(
                 'send_document: %s',
-                {
-                    k: v.keys()
-                    for k, v in {**prev_variants, self.category: curr_variants}.items()
-                },
+                {k: v.keys() for k, v in updated_variants.items()},
             )
             return
+
         with io.StringIO() as _file:
-            json.dump(
-                {**prev_variants, self.category: curr_variants},
-                _file,
-                indent=4,
-            )
+            json.dump(updated_variants, _file, indent=4)
             _file.seek(0)
             msg = run_with_retries(
                 self.bot,
