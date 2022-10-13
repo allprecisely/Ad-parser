@@ -35,7 +35,8 @@ OFFICE_POINT = float(os.environ['OFFICE_POINT_LATITUDE']), float(
     os.environ['OFFICE_POINT_LONGITUDE']
 )
 CHAT_ID_APPARTMENTS = os.environ['CHAT_ID_APPARTAMENTS']
-BAZARAKI_CATEGORY_APPARTMENTS = 'real-estate/houses-and-villas-rent'
+BAZARAKI_CATEGORY_APPARTMENTS = 'real-estate-to-rent/houses'
+BAZARAKI_CATEGORY_APPARTMENTS2 = 'real-estate-to-rent/apartments-flats'
 BAZARAKI_CATEGORY_API_APPARTMENTS = 'api/items/adverts-geometry'
 APPARTMENT_MAX_PRICE=1800
 

@@ -235,3 +235,20 @@ class AppartmentChecker(BazarakiChecker):
             + self.filter.http_query()
         )
         super().__init__(bot, url, CATEGORY_APPARTMENTS, CHAT_ID_APPARTMENTS)
+
+    def get_curr_variants(self) -> Dict[str, Dict[str, Any]]:
+        resp_http = run_with_retries(self.bot, requests.get, {'url': self.url}, 5)
+        items = parse_bazaraki(resp_http, APPARTMENT_MAX_PRICE)
+
+        url = (
+            f'{BAZARAKI_URL}/{BAZARAKI_CATEGORY_APPARTMENTS2}/'
+            + self.filter.http_query()
+        )
+        resp_http = run_with_retries(self.bot, requests.get, {'url': url}, 5)
+        items2 = parse_bazaraki(resp_http, APPARTMENT_MAX_PRICE)
+
+        if not items:
+            logger.error('no new items')
+            exit(0)
+
+        return {**items, **items2}
