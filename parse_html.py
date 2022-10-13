@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
 import logging
 import re
-from typing import Any, Dict, Optional
 
 from bs4 import BeautifulSoup
 from requests import Response

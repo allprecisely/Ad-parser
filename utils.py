@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
+from typing import List, Optional
 import logging
 import time
-from typing import List, Optional
 
 import telegram
 
