@@ -107,9 +107,7 @@ class Checker:
             return
         for k, v in reversed(new_variants.items()):
             distance_text = ''
-            if MAX_DISTANCE.get(self.category) and v.get('distance'):
-                if v['distance'] > MAX_DISTANCE[self.category]:
-                    continue
+            if v.get('distance'):
                 distance_text = DISTANCE_TEXT.format(v['distance'])
             image_with_caption = telegram.InputMediaPhoto(
                 media=v['images'][0],
@@ -127,6 +125,21 @@ class Checker:
                 telegram.InputMediaPhoto(img) for img in v['images'][1:5]
             ]
             media_group = [image_with_caption] + other_images
+
+            if MAX_DISTANCE.get(self.category) and v.get('distance'):
+                if v['distance'] > 20:
+                    continue
+                elif v['distance'] > 5:
+                    run_with_retries(
+                        self.bot,
+                        self.bot.send_media_group,
+                        dict(
+                            media=media_group,
+                            chat_id=ADDITIONAL_APPARTMENTS_CHAT,
+                            disable_notification=DISABLE_NOTIFICATIONS,
+                        ),
+                    )
+                    continue
             msgs = run_with_retries(
                 self.bot,
                 self.bot.send_media_group,
@@ -141,7 +154,7 @@ class Checker:
                 if send_also_to:
                     send_also_to(self.bot, v, media_group)
             else:
-                logger.error(f'{k} variant was not loaded')
+                logger.error(f'%s variant was not loaded', v['url'])
 
     def parse_site_for_images_and_coords(
         self, resp_images: requests.Response

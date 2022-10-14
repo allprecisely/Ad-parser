@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 # COMMON SETTINGS
 load_dotenv()
+ADDITIONAL_APPARTMENTS_CHAT = os.environ['ADDITIONAL_APPARTMENTS_CHAT']
 ADDITIONAL_SELF_CHAT = os.environ['ADDITIONAL_SELF_CHAT']
 STORAGE_CHAT_ID = os.environ['STORAGE_CHAT_ID']
 STORAGE_CHAT_PREFIX = 'GII bot storage '
