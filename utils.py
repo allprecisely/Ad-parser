@@ -1,23 +1,28 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 import time
-
-import telegram
+from mistakes import MISTAKES
 
 from settings import *
 
 logger = logging.getLogger(__name__)
 
+# {category_name: {ad_id: {**ad_props_by_category}}}
+ADS_DICT = Dict[str, Dict[str, Dict[str, Any]]]
+
+# {category_name: {user_id: {**user_props_by_category}}}
+USERS_DICT = Dict[str, Dict[str, Dict[str, Any]]]
+
 
 @dataclass
-class Filter:
+class HttpFilter:
     price_min: Optional[int] = None
     price_max: Optional[int] = None
     single_district: Optional[str] = None
     districts: Optional[List[int]] = None
 
-    custom_filters: List[str] = field(default_factory=list)
+    custom_filters: Dict[str, Any] = field(default_factory=dict)
 
     def query(self) -> str:
         filters = ['?ordering=newest']
@@ -38,56 +43,40 @@ class Filter:
 
     def http_query(self) -> str:
         filters = []
-        for _filter in self.custom_filters:
-            value = getattr(self, _filter, None)
-            if value:
-                values = value if isinstance(value, list) else [value]
-                filters.extend((f'{_filter}---{v}' for v in values))
+        for filter_name, value in self.custom_filters.items():
+            values = value if isinstance(value, list) else [value]
+            filters.extend((f'{filter_name}---{v}' for v in values))
 
         query = '/'.join(filters)
         return (f'{query}/' if query else '') + self.query()
 
-    def api_query(self) -> str:
-        filters = []
-        for _filter in self.custom_filters:
-            value = getattr(self, _filter, None)
-            if value:
-                values = [value] if isinstance(value, str) else value
-                filters.extend((f'attrs__{_filter}={v}' for v in values))
+    # def api_query(self) -> str:
+    #     filters = []
+    #     for filter_name, value in self.custom_filters.items():
+    #         values = value if isinstance(value, list) else [value]
+    #         filters.extend((f'attrs__{filter_name}={v}' for v in values))
 
-        return self.query() + '&'.join(filters)
+    #     return f'{self.query()}/' + '&'.join(filters)
 
 
-@dataclass
-class AppartmentFilter(Filter):
-    rubric: Optional[int] = None
-    area_min: Optional[int] = None
-    area_max: Optional[int] = None
-    furnishing: Optional[List[int]] = None
-    custom_filters: List[str] = field(default_factory=lambda: ['rubric', 'area_min', 'area_max', 'furnishing'])
-
-
-def run_with_retries(bot, f, kwargs, delay: int = 1):
+def run_with_retries(f, kwargs, delay: int = 1):
     for i in range(3):
         try:
             return f(**kwargs)
-        except telegram.error.RetryAfter as exc:
-            logger.info(f'again reload {exc.retry_after}')
-            time.sleep(exc.retry_after)
         except Exception as exc:
             if i == 2:
                 logger.exception('s-th went wrong, %s', f.__name__)
+                MISTAKES.append(exc)
             time.sleep(delay)
-    else:
-        try:
-            bot.send_message(text=f'{f.__name__}: {exc}', chat_id=STORAGE_CHAT_ID)
-        except:
-            pass
 
 
 def init_logger(level: str = 'INFO'):
     logger = logging.getLogger('')
     logger.setLevel(level)
     logger.addHandler(logging.StreamHandler())
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
     
-    logger.info('Logger initiated. DEBUG = %s', DEBUG)
+    logger.info('Logger initiated. Level = %s', level)
