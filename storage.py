@@ -116,6 +116,8 @@ class Storage:
         return {x[0]: dict(zip(USERS_FIELDS, x)) for x in fetched}
 
     def upsert_user_settings(self, user_id: str, **kwargs) -> bool:
+        kwargs['id'] = user_id
+        kwargs['updated_at'] = datetime.utcnow()
         fields = ','.join(kwargs)
         values = ','.join(f':{k}' for k in kwargs)
         excluded = ','.join(f'{k}=excluded.{k}' for k in kwargs)
@@ -124,7 +126,7 @@ class Storage:
                 f'INSERT INTO users({fields}) VALUES ({values})'
                 f'ON CONFLICT DO UPDATE SET {excluded},updated_at=excluded.updated_at'
             ),
-            {**kwargs, 'id': user_id, 'updated_at': datetime.utcnow()},
+            kwargs,
         )
         self.con.commit()
 

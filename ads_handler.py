@@ -54,7 +54,7 @@ def filter_users_by_ads(
 
 def filtered_common(user, ad, district) -> bool:
     return (
-        user['district'] == district
+        district in user['cities']
         and user['radius'] >= ad['radius']
         and user.get('price_min', 0)
         <= ad['price']

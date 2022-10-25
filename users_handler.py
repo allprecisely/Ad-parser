@@ -200,7 +200,7 @@ class TgUpdater:
         self.storage.upsert_user_ad_params(
             user_id, category, context.user_data[category]
         )
-        if context.user_data['settings'].get('active') == None:
+        if not context.user_data['settings']:
             context.user_data['settings']['active'] = False
             self.storage.upsert_user_settings(
                 user_id, created_at=datetime.utcnow(), active=False
@@ -387,7 +387,7 @@ class TgUpdater:
     ):
         buttons = [[x['main_btn']] for x in TG_CATEGORIES.values()] + [[KB['settings']]]
 
-        if (status := context.user_data['settings'].get('active')) is not None:
+        if status := context.user_data['settings']:
             buttons.append([KB['history']])
             buttons.append([KB['stop'] if status else KB['run']])
 
