@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from telegram import (
@@ -19,7 +20,7 @@ from telegram.ext import (
 from settings import *
 from storage import Storage
 
-DEFAULT_TYPE = ContextTypes.DEFAULT_TYPE
+CTX = ContextTypes.DEFAULT_TYPE
 SAVE_PREFIX = 'Current parameters are:'
 
 BEFORE_START_TEXT = '''
@@ -32,30 +33,34 @@ CHOOSE_CATEGORY_TEXT = (
 MAIN_SCREEN_TEXT = 'Choose category to set up searching parameters'
 SWW_TEXT = 'Something went wrong. Try to choose category again'
 UNKNOWN_CMD = 'Unknown command. Try again, or type /start to reload bot'
-
 SELECTED_SIGN = '✅'
-
 TEXTS = {
     'run': 'run searching 🟢',
     'stop': 'stop searching ⛔️',
     'history': 'current search parameters 📒',
     'save': 'save',
+    'delete': 'delete',
     'back': 'back to menu',
     'choose': 'choose',
     'prefix_choose_int': 'Please type value for ',
     'excluded_words_text': 'Please input comma separted words. If any of them are in title, ad will be ignored.',
+    'settings': 'settings 🔧',
 }
-
 KB = {
-    'run': KeyboardButton('run searching 🟢'),
-    'stop': KeyboardButton('stop searching ⛔️'),
-    'history': KeyboardButton('current search parameters 📒'),
-    'settings': KeyboardButton('settings 🔧'),
+    'run': KeyboardButton(TEXTS['run']),
+    'stop': KeyboardButton(TEXTS['stop']),
+    'history': KeyboardButton(TEXTS['history']),
+    'settings': KeyboardButton(TEXTS['settings']),
 }
-
 IKM = {
     'save': InlineKeyboardMarkup(
         [[InlineKeyboardButton(TEXTS['save'], callback_data=TEXTS['save'])]]
+    ),
+    'delete': InlineKeyboardMarkup(
+        [[InlineKeyboardButton(TEXTS['delete'], callback_data=TEXTS['delete'])]]
+    ),
+    'delete': InlineKeyboardMarkup(
+        [[InlineKeyboardButton(TEXTS['delete'], callback_data=TEXTS['delete'])]]
     ),
 }
 
@@ -80,8 +85,8 @@ TG_CATEGORIES = {
         ),
     },
     CATEGORY_MOTORBIKES: {
-        'text': f'{CATEGORY_MOTORBIKES} �',
-        'main_btn': KeyboardButton(f'{CATEGORY_MOTORBIKES} �'),
+        'text': f'{CATEGORY_MOTORBIKES} 🏍',
+        'main_btn': KeyboardButton(f'{CATEGORY_MOTORBIKES} 🏍'),
         'buttons': generate_buttons(
             [['mileage_min', 'mileage_max'], ['types', 'excluded_words']]
         ),
@@ -112,28 +117,123 @@ class TgUpdater:
     def run(self) -> None:
         self.application.run_polling()
 
-    async def handle_cmd_start(self, update: Update, context: DEFAULT_TYPE):
+    async def handle_cmd_start(self, update: Update, context: CTX):
+        await self.load_user_data(update, context)
+        await self.handle_last_message(context)
         await self.show_main_screen(update, context)
 
-    async def handle_btn(self, update: Update, context: DEFAULT_TYPE):
-        if not context.user_data:
-            await self.load_user_data(update, context)
+    async def handle_btn(self, update: Update, context: CTX):
+        await self.load_user_data(update, context)
         query = update.callback_query
         await query.answer()
-        if not context.user_data.get('category'):
-            await query.edit_message_text('Session expired. Retry')
-            await self.show_main_screen(update, context, SWW_TEXT)
+        if query.data.startswith('checkbox_'):
+            return await self.handle_btn_checkbox(update, context)
+        elif query.data == TEXTS['delete']:
+            await self.handle_btn_delete(update, context)
+            context.user_data['last_message'] = None
         elif query.data == TEXTS['save']:
             await self.handle_btn_save(update, context)
-        elif query.data.startswith('checkbox_'):
-            await self.handle_btn_checkbox(update, context)
+            context.user_data['last_message'] = None
+        elif query.data.startswith('settings_'):
+            await self.handle_btn_settings(update, context)
         else:
             await query.edit_message_text('Unknown action')
-        context.user_data['last_message'] = None
+            await self.show_main_screen(update, context, SWW_TEXT)
+            context.user_data['last_message'] = None
 
-    async def handle_text(self, update: Update, context: DEFAULT_TYPE):
-        if not context.user_data:
-            await self.load_user_data(update, context)
+    async def handle_btn_checkbox(self, update: Update, context: CTX):
+        query = update.callback_query
+        if not (category := context.user_data.get('category')):
+            await query.edit_message_text('Session expired. Retry')
+            return await self.show_main_screen(update, context, SWW_TEXT)
+        keyboard = query.message.reply_markup.inline_keyboard
+        _, field, value = query.data.split('_')
+        for i, keys in enumerate(keyboard):
+            for j, key in enumerate(keys):
+                if query.data != key['callback_data']:
+                    continue
+                if SELECTED_SIGN in key['text']:
+                    text = key['text'][:-2]
+                    context.user_data[category][field].remove(value)
+                else:
+                    text = key['text'] + f' {SELECTED_SIGN}'
+                    context.user_data[category][field].append(value)
+                keyboard[i][j] = InlineKeyboardButton(text, callback_data=query.data)
+                break
+            else:
+                continue
+            break
+        else:
+            return await update.message.reply_text(UNKNOWN_CMD)
+        await query.edit_message_text(
+            query.message.text, reply_markup=query.message.reply_markup
+        )
+
+    async def handle_btn_delete(self, update: Update, context: CTX):
+        query = update.callback_query
+        category = query.message.text.split()[0]
+        user_id = update.effective_user.id
+
+        self.storage.delete_user_params_by_category(user_id, category)
+        if category in context.user_data:
+            del context.user_data[category]
+        await query.edit_message_text(
+            query.message.text.replace('are', 'have been removed')
+        )
+
+    async def handle_btn_save(self, update: Update, context: CTX):
+        query = update.callback_query
+        if not (category := context.user_data.get('category')):
+            await query.edit_message_text('Session expired. Retry')
+            return await self.show_main_screen(update, context, SWW_TEXT)
+        user_id = update.effective_user.id
+        if self.missed_fields_for_save(context.user_data[category]):
+            return await query.edit_message_text(
+                query.message.text.replace(
+                    SAVE_PREFIX,
+                    'Not saved, as {missed_text} are not specified. Specified options:',
+                )
+            )
+
+        await query.edit_message_text(query.message.text.replace(SAVE_PREFIX, 'Saved:'))
+        context.user_data[category]['saved'] = True
+        self.storage.upsert_user_ad_params(
+            user_id, category, context.user_data[category]
+        )
+        if context.user_data['settings'].get('active') == None:
+            context.user_data['settings']['active'] = False
+            self.storage.upsert_user_settings(
+                user_id, created_at=datetime.utcnow(), active=False
+            )
+        await self.show_main_screen(update, context, 'You can set up another search')
+
+    async def handle_btn_settings(self, update: Update, context: CTX):
+        query = update.callback_query
+        keyboard = query.message.reply_markup.inline_keyboard
+        _, field = query.data.split('_', maxsplit=1)
+        for i, keys in enumerate(keyboard):
+            if query.data != keys[0]['callback_data']:
+                continue
+            if SELECTED_SIGN in keys[0]['text']:
+                text = keys[0]['text'][:-2]
+                context.user_data['settings'][field] = False
+            else:
+                text = keys[0]['text'] + f' {SELECTED_SIGN}'
+                context.user_data['settings'][field] = True
+            keyboard[i] = [InlineKeyboardButton(text, callback_data=query.data)]
+            break
+        else:
+            return await update.message.reply_text(UNKNOWN_CMD)
+        await query.edit_message_text(
+            query.message.text, reply_markup=query.message.reply_markup
+        )
+        self.storage.upsert_user_settings(
+            update.effective_user.id, **context.user_data['settings']
+        )
+
+    async def handle_text(self, update: Update, context: CTX):
+        await self.load_user_data(update, context)
+        await self.handle_last_message(context)
         message_text = update.effective_message.text
         category = context.user_data.get('category')
 
@@ -141,12 +241,13 @@ class TgUpdater:
             return await self.show_main_screen(update, context)
 
         if message_text in (TEXTS['run'], TEXTS['stop']):
-            return await self.handle_text_searching_status(
-                update, context, message_text
-            )
+            return await self.handle_text_searching_status(update, context)
 
         if message_text == TEXTS['history']:
             return await self.handle_text_history(update, context)
+
+        if message_text == TEXTS['settings']:
+            return await self.handle_text_settings(update, context)
 
         if message_text in (c['text'] for c in TG_CATEGORIES.values()):
             return await self.show_category_screen(update, context)
@@ -169,91 +270,15 @@ class TgUpdater:
             'Unknown action. Try again or choose other property'
         )
 
-    async def show_main_screen(
-        self, update: Update, context: DEFAULT_TYPE, text: str = MAIN_SCREEN_TEXT
-    ):
-        await self.handle_last_message(context)
-        buttons = [[x['main_btn']] for x in TG_CATEGORIES.values()] + [[KB['settings']]]
-
-        if not context.user_data:
-            await self.load_user_data(update, context)
-
-        if status := context.user_data.get('activ'):
-            buttons.append([KB['history']])
-            buttons.append([KB['stop'] if status else KB['run']])
-
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            reply_markup=ReplyKeyboardMarkup(buttons),
-        )
-
-    async def show_category_screen(self, update: Update, context: DEFAULT_TYPE):
-        category = update.effective_message.text.split()[0]
-        context.user_data['category'] = category
-        context.user_data.setdefault(category, {})
-        await update.message.reply_text(
-            text=CHOOSE_CATEGORY_TEXT,
-            reply_markup=ReplyKeyboardMarkup(TG_CATEGORIES[category]['buttons']),
-        )
-
-    async def handle_btn_save(self, update: Update, context: DEFAULT_TYPE):
-        query = update.callback_query
-        category = context.user_data['category']
-        user_id = update.effective_user.id
-        if self.missed_fields_for_save(context.user_data[category]):
-            return await query.edit_message_text(
-                'Not saved, as {missed_text} are not specified. Specified options:'
-                + query.message.text[len(SAVE_PREFIX) :]
-            )
-
-        await query.edit_message_text('Saved:' + query.message.text[len(SAVE_PREFIX) :])
-        context.user_data[category]['saved'] = True
-        self.storage.save_user_ad_params(user_id, category, context.user_data[category])
-        if context.user_data.get('active') == None:
-            context.user_data['active'] = False
-            self.storage.save_user(user_id)
+    async def handle_text_searching_status(self, update: Update, context: CTX):
+        active = update.effective_message.text == TEXTS['run']
+        context.user_data['settings']['active'] = active
+        self.storage.upsert_user_settings(update.effective_user.id, active=active)
         await self.show_main_screen(
-            update, context, f'Search params for {category} were saved.'
+            update, context, 'Searching ' + ('started' if active else 'stopped')
         )
 
-    async def handle_btn_checkbox(self, update: Update, context: DEFAULT_TYPE):
-        category = context.user_data['category']
-        query = update.callback_query
-        keyboard = query.message.reply_markup.inline_keyboard
-        field, value = query.data[len('checkbox_') :].split('_')
-        for i, keys in enumerate(keyboard):
-            for j, key in enumerate(keys):
-                if query.data != key['callback_data']:
-                    continue
-                if SELECTED_SIGN in key['text']:
-                    text = key['text'][:-2]
-                    context.user_data[category][field].remove(value)
-                else:
-                    text = key['text'] + f' {SELECTED_SIGN}'
-                    context.user_data[category][field].append(value)
-                keyboard[i][j] = InlineKeyboardButton(text, callback_data=query.data)
-                break
-            else:
-                continue
-            break
-        else:
-            return await update.message.reply_text(UNKNOWN_CMD)
-        await query.edit_message_text(
-            query.message.text, reply_markup=query.message.reply_markup
-        )
-
-    async def handle_text_searching_status(self, update: Update, context: DEFAULT_TYPE):
-        activ = update.effective_message.text == TEXTS['run']
-        context.user_data['activ'] = activ
-        self.storage.set_user_status(update.effective_user.id, True)
-        await self.show_main_screen(
-            update, context, 'Searching ' + 'started' if activ else 'stopped'
-        )
-
-    async def handle_text_history(self, update: Update, context: DEFAULT_TYPE):
-        if context.user_data.get('activ') is None:
-            await self.load_user_data(update, context)
+    async def handle_text_history(self, update: Update, context: CTX):
         text = ''
         for tg_category in TG_CATEGORIES:
             if 'saved' in context.user_data.get(tg_category, {}):
@@ -262,11 +287,30 @@ class TgUpdater:
                     for k, v in context.user_data[tg_category].items()
                     if v and k != 'saved' and k != 'id'
                 )
-                text += f'{tg_category} parameters are:\n{txt_props}\n\n'
-        text = text or 'No saved searching paremeters yet'
-        return await update.message.reply_text(text)
+                text = f'{tg_category} parameters are:\n{txt_props}'
+                await update.message.reply_text(text, reply_markup=IKM['delete'])
+        if not text:
+            await update.message.reply_text('No saved searching paremeters yet')
 
-    async def handle_text_last_action(self, update: Update, context: DEFAULT_TYPE):
+    async def handle_text_settings(self, update: Update, context: CTX):
+        settings = context.user_data['settings']
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    f'{x}' + SELECTED_SIGN * (settings.get(x) or False),
+                    callback_data=f'settings_{x}',
+                )
+            ]
+            for x in USER_FIELDS_TO_SHOW
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        message = await update.message.reply_text(
+            f'Please choose:', reply_markup=reply_markup
+        )
+        context.user_data['last_message'] = (TEXTS['settings'], message)
+
+    async def handle_text_last_action(self, update: Update, context: CTX):
         last_message = context.user_data['last_message'][1]
         message_text = update.effective_message.text
         category = context.user_data['category']
@@ -288,10 +332,9 @@ class TgUpdater:
             )
             context.user_data['last_message'] = None
 
-    async def handle_text_save(self, update: Update, context: DEFAULT_TYPE):
+    async def handle_text_save(self, update: Update, context: CTX):
         category = context.user_data['category']
         props = context.user_data[category]
-        await self.handle_last_message(context)
         props_text = self.form_props_text(props)
         text = f'{SAVE_PREFIX}\n{props_text}' if props_text else ''
         reply_markup = None
@@ -304,10 +347,9 @@ class TgUpdater:
         last_message = await update.message.reply_text(text, reply_markup=reply_markup)
         context.user_data['last_message'] = (TEXTS['save'], last_message)
 
-    async def handle_text_choose(self, update: Update, context: DEFAULT_TYPE):
+    async def handle_text_choose(self, update: Update, context: CTX):
         message_text = update.effective_message.text
         category = context.user_data['category']
-        await self.handle_last_message(context)
         field = message_text.split(maxsplit=1)[-1]
         if 'min' in field or 'max' in field or field == 'radius':
             message = await update.message.reply_text(
@@ -315,7 +357,6 @@ class TgUpdater:
             )
         elif field in CHECKBOX:
             selected = context.user_data[category].setdefault(field, [])
-            print(selected, context.user_data[category])
             keyboard = [
                 [
                     InlineKeyboardButton(
@@ -341,34 +382,64 @@ class TgUpdater:
             return await update.message.reply_text(SWW_TEXT)
         context.user_data['last_message'] = (field, message)
 
-    async def load_user_data(self, update: Update, context: DEFAULT_TYPE):
-        context.user_data['loaded'] = True
-        user_id = update.effective_user.id
-        is_user_existed_and_active = self.storage.is_user_existed_and_active(user_id)
-        if is_user_existed_and_active is None:
-            return
+    async def show_main_screen(
+        self, update: Update, context: CTX, text: str = MAIN_SCREEN_TEXT
+    ):
+        buttons = [[x['main_btn']] for x in TG_CATEGORIES.values()] + [[KB['settings']]]
 
-        if not any((category in context.user_data) for category in TG_CATEGORIES):
-            for (category, props) in self.storage.ad_params_by_user(user_id).items():
-                if props:
+        if (status := context.user_data['settings'].get('active')) is not None:
+            buttons.append([KB['history']])
+            buttons.append([KB['stop'] if status else KB['run']])
+
+        markup = ReplyKeyboardMarkup(buttons)
+        await update.effective_chat.send_message(text, reply_markup=markup)
+
+    async def show_category_screen(self, update: Update, context: CTX):
+        category = update.effective_message.text.split()[0]
+        context.user_data['category'] = category
+        context.user_data.setdefault(category, {})
+        await update.message.reply_text(
+            text=CHOOSE_CATEGORY_TEXT,
+            reply_markup=ReplyKeyboardMarkup(TG_CATEGORIES[category]['buttons']),
+        )
+
+    async def load_user_data(self, update: Update, context: CTX):
+        if context.user_data:
+            return
+        user_id = update.effective_user.id
+        if (settings := self.storage.get_users_settings(user_id)) is None:
+            context.user_data['settings'] = {}
+        else:
+            context.user_data['settings'] = settings
+            for (category, users) in self.storage.get_users_ad_params(user_id).items():
+                for _, props in users.items():
                     context.user_data[category] = {
                         **{k: v for k, v in props.items() if v},
                         'saved': True,
                     }
-        context.user_data.setdefault('activ', False)
 
-    async def handle_last_message(self, context: DEFAULT_TYPE):
+    async def handle_last_message(self, context: CTX):
         if not (last_message := context.user_data.get('last_message')):
             return
         field, message = last_message
         if field == TEXTS['save']:
             await message.edit_text(
-                'Continue editing...' + message.text[len(SAVE_PREFIX) :]
+                message.text.replace(SAVE_PREFIX, 'Continue editing...')
             )
         elif field in CHECKBOX:
             category = context.user_data['category']
-            selected = ', '.join(context.user_data[category][field])
+            selected = ', '.join(context.user_data[category].get(field))
             await message.edit_text(text=f'Selected {field} are: {selected}')
+        elif field == TEXTS['settings']:
+            selected = ','.join(
+                k
+                for k, v in context.user_data['settings'].items()
+                if k in USER_FIELDS_TO_SHOW and v
+            )
+            await message.edit_text(text=f'Selected settings are: {selected}')
+        else:
+            return
+        context.user_data['last_message'] = None
 
     def form_props_text(self, props: Dict[str, Any]) -> str:
         return '\n'.join(
@@ -384,16 +455,3 @@ class TgUpdater:
 if __name__ == '__main__':
     tg_updater = TgUpdater()
     tg_updater.run()
-
-
-"""
-Просмотр, что уже выбрано по текущей категории
-Кнопочка старт серч, стоп серч в зависимости от того,
-есть ли что искать; и запущен ли поиск
-
-Сделать проверку юзеров, которые старше месяца останавливать поиск и предупреждать их об этом
-
-Сделать возможность просмотра уже существующих сэйвов
-
-Не давать пользователю создавать еще поиск по тому же городу
-"""

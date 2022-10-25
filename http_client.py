@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import logging
 import re
 import string
+import time
 from typing import Any, Dict
 
 from bs4 import BeautifulSoup
@@ -13,9 +14,10 @@ import requests
 
 from mistakes import MISTAKES
 from settings import *
-from utils import ADS_DICT, HttpFilter, run_with_retries
+from utils import ADS_DICT, HttpFilter
 
 logger = logging.getLogger(__name__)
+TIME_FORMAT = '%d.%m.%Y'
 
 
 class Client:
@@ -30,12 +32,7 @@ class Client:
         ).http_query()
 
         for subcategory in category.get('subcategories', [category]):
-            ads.update(
-                self._get_ads(
-                    f"{BAZARAKI_URL}/{subcategory['path']}/{_filter}",
-                    subcategory['name'],
-                )
-            )
+            ads.update(self._get_ads(f"{BAZARAKI_URL}/{subcategory['path']}/{_filter}"))
 
         return ads
 
@@ -43,26 +40,41 @@ class Client:
         translator = Translator(to_lang="en", from_lang='el')
         for category_name, ads in ads_dict.items():
             for ad in ads.values():
-                response = run_with_retries(self.session.get, {'url': ad['url']}, 3)
+                response = self._get_with_retries(ad['url'], 5)
                 if response.status_code >= 400:
-                    MISTAKES.append(
-                        f"Could not parse add ({response.status_code}): {ad['url']}"
-                    )
                     continue
                 ad.update(self._parse_ad_page(response, ad, translator, category_name))
 
-    def _get_ads(self, url: str, category: str) -> ADS_DICT:
-        response = run_with_retries(self.session.get, {'url': url}, 5)
+    def _get_ads(self, url: str) -> ADS_DICT:
+        response = self._get_with_retries(url, 5)
         if response.status_code >= 400:
-            MISTAKES.append(
-                f'Could not parse all {category} page ({response.status_code}): {url}'
-            )
             return {}
         return self._parse_ads_page(response, url)
 
+    def _get_with_retries(self, url, delay: int = 1):
+        for i in range(3):
+            try:
+                response = self.session.get(url)
+                response.raise_for_status()
+                return response
+            except Exception as exc:
+                if i == 2:
+                    logger.exception(
+                        f'Could not parse add (%s): %s\n%s',
+                        response.status_code,
+                        url,
+                        exc,
+                    )
+                    MISTAKES.append(
+                        f'Could not parse add ({response.status_code}): {url}\n{exc}'
+                    )
+                time.sleep(delay)
+
     def _parse_ads_page(self, response: Response, url: str) -> ADS_DICT:
         ads = {}
-        now = datetime.now()
+        now = datetime.utcnow()
+        today = now.strftime(TIME_FORMAT)
+        yesterday = (now - timedelta(days=1)).strftime(TIME_FORMAT)
         expired_date = now - timedelta(days=DAYS_TO_EXPIRE)
 
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -80,7 +92,7 @@ class Client:
 
         for li in lis:
             try:
-                ads.update(self._parse_li(li, now, expired_date))
+                ads.update(self._parse_li(li, today, yesterday, expired_date))
             except Exception as exc:
                 logger.exception(f'Parse error for: {url}  Exception: {exc}')
                 MISTAKES.append(f'Parse error for: {url}  Exception: {exc}')
@@ -88,7 +100,7 @@ class Client:
         return ads
 
     def _parse_li(
-        self, li: Any, now: datetime, expired_date: datetime
+        self, li: Any, today: str, yesterday: str, expired_date: datetime
     ) -> Dict[str, Any]:
         id_tag = li.find(
             'div',
@@ -96,26 +108,29 @@ class Client:
                 'class': 'announcement-block__favorites js-add-favorites js-favorites-handler'
             },
         )
-        if not id_tag:
-            logger.warning('No id_tag in ad')
-            return {}
+        ad_id = id_tag['data-id']
 
-        img = li.find('img')
-        if not img:
-            return {}
+        # \n\t22.10.2022 15:11,\n\t Limassol district, Germasogeia\n
+        date_tag = li.find('div', attrs={'class': 'announcement-block__date'})
+        ad_datetime_str = (
+            date_tag.string.strip()
+            .split('\n')[0]
+            .replace('Today', today)
+            .replace('Yesterday', yesterday)
+        )
+        match = re.match('.*(\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}).*', ad_datetime_str)
+        if not match:
+            raise RuntimeError(f'Wrong date format (ad {ad_id}): {ad_datetime_str}')
+        ad_datetime = datetime.strptime(match.group(1), '%d.%m.%Y %H:%M')
 
-        announced_tag = li.find('div', attrs={'class': 'announcement-block__date'})
-        announcement_date = announced_tag.string.strip().split('\n')[0]
-        match = re.match('(\d{2}.\d{2}.\d{4}).*', announcement_date)
-        if match and datetime.strptime(match.group(1), '%d.%m.%Y') < expired_date:
+        if ad_datetime < expired_date:
             return
 
         item = {
-            'id': id_tag['data-id'],
+            'id': ad_id,
             'url': BAZARAKI_URL + li.find('a')['href'],
-            'images': [img['src']],
-            'announcement_date': announcement_date,
-            'created_at': now.strftime('%d.%m.%Y'),
+            'images': [img['src']] if (img := li.find('img')) else [],
+            'dt': ad_datetime,
         }
 
         for meta in li.findAll('meta'):
@@ -124,7 +139,7 @@ class Client:
             elif meta['itemprop'] == 'name':
                 item['name'] = meta['content'].strip()
             elif meta['itemprop'] == 'areaServed':
-                item['location'] = meta['content']
+                item['location'] = meta['content'].strip()
 
         return {item['id']: item}
 
@@ -140,8 +155,8 @@ class Client:
         soup = BeautifulSoup(response.text, 'html.parser')
 
         images_tag = soup.body.find('div', attrs={'class': 'announcement__images'})
-        with _parse_tag('images_tag', ad_props['url']):
-            info['images'] = [img['src'] for img in images_tag.findAll('img')][:7]
+        if images_tag:
+            info['images'] = [img['src'] for img in images_tag.findAll('img')][:10]
 
         coords_tag = soup.body.find(
             'a', attrs={'class': 'announcement__location js-open-announcement-location'}
@@ -153,14 +168,16 @@ class Client:
                 )
             else:
                 # coords_tag['data-coords'] = SRID=4326;POINT (33.055763 34.700778)
-                info['coords'] = map(
-                    float,
-                    coords_tag['data-coords'].split(maxsplit=1)[1][1:-1].split()[::-1],
+                coords = (
+                    re.match('.*(\d{2}\.\d+ \d{2}\.\d+).*', coords_tag['data-coords'])
+                    .group(1)
+                    .split()
                 )
+                info['coords'] = float(coords[1]), float(coords[0])
             district_coords = CITIES.get(
-                ad_props['location'].split()[0], CITIES['Limassol']
+                ad_props['location'].split()[0].strip(), CITIES['Limassol']
             )
-            info['distance_to_center'] = haversine(district_coords, info['coords'])
+            info['radius'] = haversine(district_coords, info['coords'])
 
         description_tag = soup.body.find(
             'div', attrs={'class': 'announcement-description'}
@@ -177,7 +194,7 @@ class Client:
         with _parse_tag('ul_tag', ad_props['url']):
             for li_tag in ul_tag.findAll('li'):
                 span_string = li_tag.find('span').string.strip().lower()
-                for field in CATEGORIES[category_name]['category_fields']:
+                for field in CATEGORIES_PROPS[category_name]['category_fields']:
                     if field in span_string:
                         a_tag = li_tag.find('a')
                         if a_tag:

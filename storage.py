@@ -18,31 +18,31 @@ class Storage:
         self.create_tables()
 
     def create_tables(self) -> None:
-        for category_name, props in CATEGORIES.items():
+        for category, props in CATEGORIES_PROPS.items():
             fields = ','.join(AD_COMMON_FIELDS[1:] + props['category_fields'])
             self.cur.execute(
-                f'CREATE TABLE IF NOT EXISTS {category_name}(id PRIMARY KEY,{fields})'
+                f'CREATE TABLE IF NOT EXISTS {category}(id PRIMARY KEY,{fields})'
             )
 
             fields = ','.join(props['users_fields'][1:])
             self.cur.execute(
-                f'CREATE TABLE IF NOT EXISTS users_{category_name}(id PRIMARY KEY,{fields})'
+                f'CREATE TABLE IF NOT EXISTS users_{category}(id PRIMARY KEY,{fields})'
             )
 
         fields = ','.join(USERS_FIELDS[1:])
         self.cur.execute(f'CREATE TABLE IF NOT EXISTS users(id PRIMARY KEY,{fields})')
 
-    def get_ad_history_ids(self) -> Dict[str, Set[str]]:
+    def get_saved_ads(self) -> Dict[str, Dict[str, int]]:
         ad_history_ids = {}
-        for category_name in CATEGORIES:
-            res = self.cur.execute(f'SELECT id FROM {category_name}')
-            ad_history_ids[category_name] = {i[0] for i in res.fetchall()}
+        for category in CATEGORIES_PROPS:
+            res = self.cur.execute(f'SELECT id,price FROM {category}')
+            ad_history_ids[category] = {i[0]: i[1] for i in res.fetchall()}
         return ad_history_ids
 
-    def update_history(self, ads_dict: ADS_DICT) -> None:
-        for category_name, ads in ads_dict.items():
+    def upsert_new_ads(self, new_ads: ADS_DICT) -> None:
+        for category, ads in new_ads.items():
             existed_fields = (
-                AD_COMMON_FIELDS + CATEGORIES[category_name]['category_fields']
+                AD_COMMON_FIELDS + CATEGORIES_PROPS[category]['category_fields']
             )
             for ad in ads.values():
                 values = ','.join(
@@ -55,94 +55,82 @@ class Storage:
                     if field in EVALED_ADS_FIELDS
                 }
                 self.cur.execute(
-                    f'INSERT INTO {category_name}({fields}) VALUES({values})',
+                    f'INSERT OR REPLACE INTO {category}({fields}) VALUES({values})',
                     {**ad, **evaled},
                 )
         self.con.commit()
 
-    def get_users(self) -> USERS_DICT:
+    def get_users_ad_params(self, user_id: Optional[str] = None) -> USERS_DICT:
         users = {}
-        for category_name, category_props in CATEGORIES.items():
+        for category, category_props in CATEGORIES_PROPS.items():
             fields = ','.join(category_props['users_fields'])
-            res = self.cur.execute(f'SELECT {fields} FROM users_{category_name}')
-            users[category_name] = {
+            query = f'SELECT {fields} FROM users_{category}'
+            if user_id:
+                query += f' WHERE id = {user_id}'
+            users[category] = {
                 row[0]: dict(zip(category_props['users_fields'], row))
-                for row in res.fetchall()
+                for row in self.cur.execute(query).fetchall()
             }
-            for user_props_by_category in users[category_name].values():
+            for user_props_by_category in users[category].values():
                 for field in EVALED_USERS_FIELDS:
                     if user_props_by_category.get(field):
                         user_props_by_category[field] = eval(
                             user_props_by_category[field]
                         )
-
         return users
 
-    def save_user_ad_params(
+    def upsert_user_ad_params(
         self, user_id: str, category: str, ad_params: Dict[str, Any]
     ) -> None:
-        fields = ('id',) + tuple(
-            f for f in ad_params if f in CATEGORIES[category]['users_fields']
-        )
-        values = ','.join(f':{field}' for field in fields)
-        fields = ','.join(f'{field}' for field in fields)
+        filtered = {
+            k: v
+            for k, v in ad_params.items()
+            if k in CATEGORIES_PROPS[category]['users_fields']
+        }
+        filtered['id'] = user_id
+        fields = ','.join(filtered)
+        values = ','.join(f':{k}' for k in filtered)
+        excluded = ','.join(f'{k}=excluded.{k}' for k in filtered)
         evaled = {
             field: str(value)
-            for field, value in ad_params.items()
+            for field, value in filtered.items()
             if field in EVALED_USERS_FIELDS
         }
         self.cur.execute(
-            f'INSERT OR REPLACE INTO users_{category}({fields}) VALUES({values})',
-            {'id': user_id, **ad_params, **evaled},
-        )
-        self.con.commit()
-
-    def is_user_existed_and_active(self, user_id: str) -> Optional[bool]:
-        res = self.cur.execute('SELECT active FROM users WHERE id = ?', (user_id,))
-        fetched = res.fetchone()
-        print(fetched)
-        return fetched[0] if fetched else None
-
-    def save_user(self, user_id: str) -> bool:
-        now = datetime.utcnow()
-        self.cur.execute(
             (
-                'INSERT INTO users(id,active,created_at,updated_at) VALUES (?,?,?,?)'
-                'ON CONFLICT DO NOTHING'
-
+                f'INSERT INTO users_{category}({fields}) VALUES ({values})'
+                f'ON CONFLICT DO UPDATE SET {excluded}'
             ),
-            (user_id, False, now, now),
+            {**filtered, **evaled},
         )
         self.con.commit()
 
-    def set_user_status(self, user_id: str, active: bool) -> bool:
-        fields = ','.join(USERS_FIELDS)
-        values = ','.join(f':{field}' for field in USERS_FIELDS)
-        now = datetime.utcnow()
+    def get_users_settings(self, user_id: Optional[str] = None) -> Optional[Any]:
+        query = f'SELECT {",".join(USERS_FIELDS)} FROM users'
+        if user_id:
+            query += f' WHERE id = {user_id}'
+        res = self.cur.execute(query)
+        fetched = res.fetchall()
+        if user_id:
+            return dict(zip(USERS_FIELDS, fetched[0])) if fetched else None
+        return {x[0]: dict(zip(USERS_FIELDS, x)) for x in fetched}
+
+    def upsert_user_settings(self, user_id: str, **kwargs) -> bool:
+        fields = ','.join(kwargs)
+        values = ','.join(f':{k}' for k in kwargs)
+        excluded = ','.join(f'{k}=excluded.{k}' for k in kwargs)
         self.cur.execute(
             (
                 f'INSERT INTO users({fields}) VALUES ({values})'
-                'ON CONFLICT DO UPDATE SET updated_at=excluded.updated_at, '
-                'active=excluded.active WHERE active!=excluded.active'
+                f'ON CONFLICT DO UPDATE SET {excluded},updated_at=excluded.updated_at'
             ),
-            {
-                'id': user_id,
-                'active': active,
-                'created_at': now,
-                'updated_at': now,
-                'history_asked_at': None,
-            },
+            {**kwargs, 'id': user_id, 'updated_at': datetime.utcnow()},
         )
         self.con.commit()
 
-    def ad_params_by_user(self, user_id: str) -> Dict[str, Dict[str, Any]]:
-        return {
-            category_name: users[user_id]
-            for category_name, users in self.get_users().items() if user_id in users
-        }
-
-    def delete_user(self) -> None:
-        pass
+    def delete_user_params_by_category(self, user_id: str, category: str) -> None:
+        self.cur.execute(f'DELETE FROM users_{category} WHERE id = ?', (user_id,))
+        self.con.commit()
 
     def get_ads_for_user_in_interval(self) -> ADS_DICT:
         pass

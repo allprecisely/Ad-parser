@@ -1,8 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 import logging
-import time
-from mistakes import MISTAKES
 
 from settings import *
 
@@ -49,25 +47,6 @@ class HttpFilter:
 
         query = '/'.join(filters)
         return (f'{query}/' if query else '') + self.query()
-
-    # def api_query(self) -> str:
-    #     filters = []
-    #     for filter_name, value in self.custom_filters.items():
-    #         values = value if isinstance(value, list) else [value]
-    #         filters.extend((f'attrs__{filter_name}={v}' for v in values))
-
-    #     return f'{self.query()}/' + '&'.join(filters)
-
-
-def run_with_retries(f, kwargs, delay: int = 1):
-    for i in range(3):
-        try:
-            return f(**kwargs)
-        except Exception as exc:
-            if i == 2:
-                logger.exception('s-th went wrong, %s', f.__name__)
-                MISTAKES.append(exc)
-            time.sleep(delay)
 
 
 def init_logger(level: str = 'INFO'):

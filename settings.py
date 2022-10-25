@@ -12,20 +12,6 @@ DAYS_TO_EXPIRE = 14
 ### BAZARAKI
 BAZARAKI_URL = 'https://www.bazaraki.com'
 
-## Appartments
-OFFICE_POINT = float(os.environ['OFFICE_POINT_LATITUDE']), float(
-    os.environ['OFFICE_POINT_LONGITUDE']
-)
-APPARTMENT_MAX_PRICE = 1800
-
-# filters
-DEFAULT_FURNISHING = {
-    1: 'Fully Furnished',
-    1: 'Semi-Furnished',
-}
-DEFAULT_RUBRIC = 681
-DEFAULT_SINGLE_DISTRICT = 'lemesos-district-limassol'
-
 ## Motorbikes
 COMMON_AREA_MIN = 30
 
@@ -38,7 +24,7 @@ CATEGORY_CARS = 'cars'
 CITIES = {
     'Limassol': (34.686703, 33.053791),
     'Larnaca': (34.923374, 33.627465),
-    'Lefcosia': (35.172729, 33.365156),
+    'Lefkosia': (35.172729, 33.365156),
     'Paphos': (34.776770, 32.422453),
     'Famagusta': (35.121793, 33.939288),
 }
@@ -51,13 +37,23 @@ CHECKBOX = {
     'cities': tuple(CITIES),
 }
 
-USERS_FIELDS = ('id', 'active', 'created_at', 'updated_at', 'history_asked_at')
+USERS_FIELDS = (
+    'id',
+    'active',
+    'show_location',
+    'without_sound',
+    'ads_without_photo',
+    'history_asked_at',
+    'created_at',
+    'updated_at',
+)
+USER_FIELDS_TO_SHOW = ('show_location', 'without_sound', 'ads_without_photo')
 USERS_COMMON_FIELDS = (
     'id',
     'cities',
     'price_min',
     'price_max',
-    'distance_to_center',
+    'radius',
     'word_exceptions',
 )
 USERS_RENT_FIELDS = USERS_COMMON_FIELDS + (
@@ -86,24 +82,30 @@ AD_COMMON_FIELDS = (
     'id',
     'url',
     'images',
-    'announcement_date',
-    'created_at',
+    'dt',
     'name',
     'price',
     'location',
     'coords',
-    'distance_to_center',
+    'radius',
     'description',
 )
 INT_FIELDS = {'year', 'mileage', 'area'}
 EVALED_ADS_FIELDS = {'coords', 'images'}
-EVALED_USERS_FIELDS = {'word_exceptions', 'types', 'furnishing', 'bedrooms', 'gearbox', 'cities'}
+EVALED_USERS_FIELDS = {
+    'word_exceptions',
+    'types',
+    'furnishing',
+    'bedrooms',
+    'gearbox',
+    'cities',
+}
 
 TEMPLATE_DESCRIPTION = '''{name}
 price: {price} €
 date: {announcement_date}
 distance to center: {distance} ({location})
-{category_description}
+{extra}
 
 {description}
 
@@ -114,7 +116,7 @@ CATEGORY_TEXT_MOTORBIKES = (
 )
 CATEGORY_TEXT_CARS = 'year: {year}, mileage: {mileage} km, gearbox: {gearbox}, fuel: {fuel}, condition: {condition}'
 
-CATEGORIES = {
+CATEGORIES_PROPS = {
     CATEGORY_RENT: {
         'name': CATEGORY_RENT,
         'price_max': 2500,
@@ -148,7 +150,7 @@ CATEGORIES = {
     },
     CATEGORY_CARS: {
         'name': CATEGORY_CARS,
-        'path': 'car-motorbikes-boats-and-parts/cars',
+        'path': 'car-motorbikes-boats-and-parts/cars-trucks-and-vans',
         'price_max': 20000,
         'category_fields': ('year', 'gearbox', 'mileage', 'condition', 'fuel'),
         'users_fields': USERS_CARS_FIELDS,
