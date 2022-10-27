@@ -28,7 +28,7 @@ class Tg:
     ) -> None:
         logger.info('Sending ads')
         for category, ads in users_by_ads.items():
-            for ad_id, user_ids in ads.items():
+            for ad_id, user_ids in reversed(ads.items()):
                 message = self._form_message(category, new_ads[category][ad_id])
                 for user_id in user_ids:
                     await self._send_media_ad(
