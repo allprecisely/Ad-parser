@@ -33,9 +33,10 @@ def filter_users_by_ads(
             ad_city = ad['location'].split()[0]
             try:
                 for user_id, user_props in users_ad_params[category].items():
+                    settings = users_settings.get(user_id, {})
                     if (
-                        users_settings.get('active')
-                        and (users_settings.get('ads_without_photo') or ad['images'])
+                        settings.get('active')
+                        and (settings.get('ads_without_photo') or ad['images'])
                         and filtered_common(user_props, ad, ad_city)
                         and filtered_by_category(user_props, ad, category)
                     ):

@@ -125,8 +125,8 @@ EVALED_USERS_FIELDS = {
 
 TEMPLATE_DESCRIPTION = '''{name}
 price: {price} €
-date: {announcement_date}
-distance to center: {distance} ({location})
+date: {dt}
+distance to center: {radius} ({location})
 {extra}
 
 {description}

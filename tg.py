@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+import pathlib
 import time
 from typing import Any, Dict, List, Tuple, Union
 import logging
@@ -80,7 +81,7 @@ class Tg:
         attempts = len(message) if isinstance(message, list) else 1
         while True:
             try:
-                await self._send_media_ad_try(
+                return await self._send_media_ad_try(
                     message, user_id, users_settings, coords, attempts
                 )
             except telegram.error.RetryAfter as exc:
@@ -106,7 +107,10 @@ class Tg:
         without_sound = settings.get('without_sound', False)
         if settings.get('show_location') and coords:
             await self.bot.send_location(
-                user_id, *coords, disable_notification=without_sound
+                user_id,
+                *coords,
+                disable_notification=without_sound,
+                horizontal_accuracy=500 * (len(str(coords[0])) <= 10),
             )
         if isinstance(message, list):
             await self.bot.send_media_group(
@@ -120,7 +124,8 @@ class Tg:
             )
 
     async def send_mistakes(self, mistakes: List[str]):
-        with open(f'{datetime.now()}_dump.txt', 'w') as _file:
+        _path = pathlib.Path(__file__).parent / 'logs' / f'{datetime.now()}_dump.txt'
+        with open(_path, 'w') as _file:
             json.dump(mistakes, _file, indent=4)
         try:
             await self.bot.send_message(STORAGE_CHAT_ID, '\n'.join(mistakes))
