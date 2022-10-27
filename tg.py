@@ -104,14 +104,11 @@ class Tg:
     ) -> None:
         settings = users_settings.get(user_id)
         without_sound = settings.get('without_sound', False)
-        with_photo = isinstance(message, list)
-        if not (with_photo or settings.get('ads_without_photo')):
-            return
         if settings.get('show_location') and coords:
             await self.bot.send_location(
                 user_id, *coords, disable_notification=without_sound
             )
-        if with_photo:
+        if isinstance(message, list):
             await self.bot.send_media_group(
                 media=message[:attempts] + message[attempts + 1 :],
                 chat_id=user_id,

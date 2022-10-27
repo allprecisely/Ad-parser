@@ -35,6 +35,7 @@ def filter_users_by_ads(
                 for user_id, user_props in users_ad_params[category].items():
                     if (
                         users_settings.get('active')
+                        and (users_settings.get('ads_without_photo') or ad['images'])
                         and filtered_common(user_props, ad, ad_city)
                         and filtered_by_category(user_props, ad, category)
                     ):
@@ -46,15 +47,14 @@ def filter_users_by_ads(
 
 
 def filtered_common(user, ad, ad_city) -> bool:
-    return (
+    res = (
         ad_city in user['cities']
         and user['radius'] >= ad['radius']
         and _between(user, ad, 'price')
-        and all(
-            word.strip() not in ad['name']
-            for word in user.get('excluded_words', '').split(',')
-        )
     )
+    if res and (excluded_words := user.get('excluded_words')):
+        res = all(word.lower() not in ad['name'].lower() for word in excluded_words)
+    return res
 
 
 def filtered_by_category(user, ad, category) -> bool:
@@ -64,10 +64,10 @@ def filtered_by_category(user, ad, category) -> bool:
             and _in(user, ad, 'pets')
             and _in(user, ad, 'furnishing')
             and _in(user, ad, 'bedrooms')
-            and _in(user, ad, 'short_term')
+            and (not ad.get('short_term') or user.get('short_term'))
         )
     elif category == CATEGORY_MOTORBIKES:
-        return _between(user, ad, 'mileage') and _eq(user, ad, 'type', 'types')
+        return _between(user, ad, 'mileage') and _in(user, ad, 'type', 'types')
     elif category == CATEGORY_CARS:
         return (
             _between(user, ad, 'mileage')
@@ -88,4 +88,4 @@ def _between(user, ad, prop: str, u_prop: Optional[str] = None) -> bool:
 
 
 def _in(user, ad, prop: str, u_prop: Optional[str] = None) -> bool:
-    return ((a := ad.get(prop)) and (u := user.get(u_prop or prop))) or a in u
+    return not ((a := ad.get(prop)) and (u := user.get(u_prop or prop))) or a in u
