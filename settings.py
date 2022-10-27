@@ -17,8 +17,6 @@ COMMON_AREA_MIN = 30
 
 CATEGORY_RENT = 'rent'
 CATEGORY_MOTORBIKES = 'motorbikes'
-CATEGORY_APPARTMENTS = 'appartments'
-CATEGORY_HOUSES = 'houses'
 CATEGORY_CARS = 'cars'
 
 CITIES = {
@@ -86,15 +84,16 @@ USERS_CARS_FIELDS = USERS_COMMON_FIELDS + (
 )
 AD_COMMON_FIELDS = (
     'id',
-    'url',
-    'images',
     'dt',
+    'added_at',
     'name',
     'price',
     'location',
     'coords',
     'radius',
     'description',
+    'url',
+    'images',
 )
 INT_FIELDS = {'year', 'mileage', 'area'}
 EVALED_ADS_FIELDS = {'coords', 'images'}
@@ -128,10 +127,14 @@ CATEGORIES_PROPS = {
         'price_max': 2500,
         'path': '',
         'subcategories': [
-            {'name': CATEGORY_HOUSES, 'path': 'real-estate-to-rent/houses'},
+            {'name': 'houses', 'path': 'real-estate-to-rent/houses'},
             {
-                'name': CATEGORY_APPARTMENTS,
+                'name': 'apartments',
                 'path': 'real-estate-to-rent/apartments-flats',
+            },
+            {
+                'name': 'short_term',
+                'path': 'real-estate-to-rent/short-term',
             },
         ],
         'custom_filters': {'area_min': COMMON_AREA_MIN},
@@ -142,6 +145,7 @@ CATEGORIES_PROPS = {
             'parking',
             'furnishing',
             'bedrooms',
+            'short_term',
         ),
         'users_fields': USERS_RENT_FIELDS,
         'description': CATEGORY_TEXT_RENT,

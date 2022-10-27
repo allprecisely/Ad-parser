@@ -2,13 +2,11 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 import logging
 import re
-# import string
 import time
 from typing import Any, Dict
 
 from bs4 import BeautifulSoup
 from requests import Response
-# from translate import Translator
 import requests
 
 from distance_counter import haversine
@@ -26,7 +24,9 @@ class Client:
         # self.translator = Translator(to_lang="en", from_lang='el')
         # self.translator = LibreTranslateAPI("https://translate.argosopentech.com/")
 
-    def get_updates(self, category: ADS_DICT) -> ADS_DICT:
+    def get_updates(
+        self, category: ADS_DICT, saved_ads: Dict[str, Dict[str, int]]
+    ) -> ADS_DICT:
         ads = {}
         _filter = HttpFilter(
             price_max=category['price_max'],
@@ -34,21 +34,28 @@ class Client:
         ).http_query()
 
         for subcategory in category.get('subcategories', [category]):
-            ads.update(self._get_ads(f"{BAZARAKI_URL}/{subcategory['path']}/{_filter}"))
+            ads.update(
+                self._get_ads(
+                    f"{BAZARAKI_URL}/{subcategory['path']}/{_filter}",
+                    saved_ads[category['name']],
+                    short_term=(subcategory['name'] == 'short_term'),
+                )
+            )
         if category['name'] == CATEGORY_RENT:
             short_term_ads = self._get_ads(
-                f"{BAZARAKI_URL}/real-estate-to-rent/short-term/{_filter}"
+                f"{BAZARAKI_URL}/real-estate-to-rent/short-term/{_filter}",
+                saved_ads[category['name']],
+                True,
             )
-            for ad in short_term_ads.values():
-                ad['short_term'] = True
-                if ad['price'] <= 800:
-                    ad['price'] *= 30
+
             ads.update(short_term_ads)
 
         return ads
 
     def enrich_new_ads(self, ads_dict: ADS_DICT) -> None:
-        logger.info('Enriching new ads')
+        logger.info(
+            'Enriching new ads {}'.format({k: len(v) for k, v in ads_dict.items()})
+        )
         for category_name, ads in ads_dict.items():
             for ad in ads.values():
                 response = self._get_with_retries(ad['url'], 5)
@@ -56,11 +63,11 @@ class Client:
                     continue
                 ad.update(self._parse_ad_page(response, ad, category_name))
 
-    def _get_ads(self, url: str) -> ADS_DICT:
+    def _get_ads(self, url: str, saved_ads_by_category: Dict[str, int], short_term: bool = False) -> ADS_DICT:
         response = self._get_with_retries(url, 5)
         if response.status_code >= 400:
             return {}
-        return self._parse_ads_page(response, url)
+        return self._parse_ads_page(response, url, saved_ads_by_category, short_term)
 
     def _get_with_retries(self, url, delay: int = 1):
         for i in range(3):
@@ -81,7 +88,9 @@ class Client:
                     )
                 time.sleep(delay)
 
-    def _parse_ads_page(self, response: Response, url: str) -> ADS_DICT:
+    def _parse_ads_page(
+        self, response: Response, url: str, saved_ads_by_category: Dict[str, int], short_term: bool = False
+    ) -> ADS_DICT:
         ads = {}
         now = datetime.utcnow()
         today = now.strftime(TIME_FORMAT)
@@ -103,7 +112,11 @@ class Client:
 
         for li in lis:
             try:
-                ads.update(self._parse_li(li, today, yesterday, expired_date))
+                ads.update(
+                    self._parse_li(
+                        li, now, today, yesterday, expired_date, saved_ads_by_category, short_term
+                    )
+                )
             except Exception as exc:
                 logger.exception(f'Parse error for: {url}  Exception: {exc}')
                 MISTAKES.append(f'Parse error for: {url}  Exception: {exc}')
@@ -111,7 +124,14 @@ class Client:
         return ads
 
     def _parse_li(
-        self, li: Any, today: str, yesterday: str, expired_date: datetime
+        self,
+        li: Any,
+        now: datetime,
+        today: str,
+        yesterday: str,
+        expired_date: datetime,
+        saved_ads_by_category: Dict[str, int],
+        short_term: bool = False,
     ) -> Dict[str, Any]:
         id_tag = li.find(
             'div',
@@ -120,6 +140,12 @@ class Client:
             },
         )
         ad_id = id_tag['data-id']
+        price = int(float(li.find('meta', attrs={'itemprop': 'price'})['content']))
+        if ad_id in saved_ads_by_category:
+            if short_term and price <= 800:
+                price *= 30
+            if int(saved_ads_by_category[ad_id]) <= price:
+                return {}
 
         # \n\t22.10.2022 15:11,\n\t Limassol district, Germasogeia\n
         date_tag = li.find('div', attrs={'class': 'announcement-block__date'})
@@ -142,16 +168,15 @@ class Client:
             'url': BAZARAKI_URL + li.find('a')['href'],
             'images': [img['src']] if (img := li.find('img')) else [],
             'dt': ad_datetime,
+            'name': li.find('meta', attrs={'itemprop': 'name'})['content'].strip(),
+            'location': li.find('meta', attrs={'itemprop': 'areaServed'})[
+                'content'
+            ].strip(),
+            'price': price,
+            'added_at': now,
         }
-
-        for meta in li.findAll('meta'):
-            if meta['itemprop'] == 'price':
-                item['price'] = int(float(meta['content']))
-            elif meta['itemprop'] == 'name':
-                item['name'] = meta['content'].strip()
-            elif meta['itemprop'] == 'areaServed':
-                item['location'] = meta['content'].strip()
-
+        if short_term:
+            item['short_term'] = True
         return {item['id']: item}
 
     def _parse_ad_page(

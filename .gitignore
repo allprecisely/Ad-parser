@@ -7,3 +7,4 @@ tmp.py
 aws/
 tmp/
 storage.db
+logs

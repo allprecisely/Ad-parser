@@ -7,7 +7,7 @@ from storage import Storage
 from http_client import Client
 from tg import Tg
 from utils import init_logger
-from ads_handler import filter_users_by_ads, filter_new_ads, parse_ads_from_http
+from ads_handler import filter_users_by_ads, filter_ads_from_http
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +28,7 @@ def main(argv: Optional[List[str]] = None):
     tg = Tg()
 
     saved_ads = storage.get_saved_ads()
-    parsed_ads = parse_ads_from_http(http_client, args.disable)
-    new_ads = filter_new_ads(saved_ads, parsed_ads)
+    new_ads = filter_ads_from_http(http_client, saved_ads, args.disable)
     http_client.enrich_new_ads(new_ads)
     storage.upsert_new_ads(new_ads)
     if args.upload_db_only:

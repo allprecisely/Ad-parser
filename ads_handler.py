@@ -10,29 +10,15 @@ from utils import ADS_DICT
 logger = logging.getLogger(__name__)
 
 
-def parse_ads_from_http(http_client: Client, disabled: List[str]) -> ADS_DICT:
+def filter_ads_from_http(
+    http_client: Client, saved_ads: Dict[str, Dict[str, int]], disabled: List[str]
+) -> ADS_DICT:
     logger.info('Parsing ads from http')
     ads = {}
     for category, props in CATEGORIES_PROPS.items():
         if category not in disabled:
-            ads[category] = http_client.get_updates(props)
+            ads[category] = http_client.get_updates(props, saved_ads)
     return ads
-
-
-def filter_new_ads(
-    saved_ads: Dict[str, Dict[str, int]], new_ads_from_site: ADS_DICT
-) -> ADS_DICT:
-    logger.info('Filtering new ads')
-    new_ads = {category: {} for category in CATEGORIES_PROPS}
-    for category, ads in new_ads_from_site.items():
-        for ad_id, props in ads.items():
-            if old_price := saved_ads[category].get(ad_id):
-                if old_price <= props['price']:
-                    continue
-                props['lowered'] = f'from {old_price} to {props["price"]}'
-            new_ads[category][ad_id] = props
-
-    return new_ads
 
 
 def filter_users_by_ads(
@@ -47,7 +33,9 @@ def filter_users_by_ads(
             district = ad['location'].split()[0]
             try:
                 for user_id, user_props in users_ad_params[category].items():
-                    short_term = users_settings.get(user_id, {}).get('show_short_term_rent')
+                    short_term = users_settings.get(user_id, {}).get(
+                        'show_short_term_rent'
+                    )
                     if filtered_common(
                         user_props, ad, district
                     ) and filtered_by_category(category, ad, short_term):
@@ -81,14 +69,12 @@ def filtered_by_category(user, ad, category, short_term: bool) -> bool:
             and user.get('pets', ad['pets']) == ad['pets']
             and ad['furnishing'] in user.get('furnishing', [ad['furnishing']])
             and ad['bedrooms'] in user.get('bedrooms', ad['bedrooms']).split(',')
-            and (not ad.get('short_term') or  short_term)
+            and (not ad.get('short_term') or short_term)
         )
     elif category == CATEGORY_MOTORBIKES:
-        return (
-            user.get('mileage_min', 0)
-            <= int(ad['mileage'].split()[0])
-            <= user.get('mileage_max', float('inf'))
-        )
+        return user.get('mileage_min', 0) <= int(ad['mileage'].split()[0]) <= user.get(
+            'mileage_max', float('inf')
+        ) and ad['type'] in user.get('types', ad['type'])
     elif category == CATEGORY_CARS:
         return (
             user.get('mileage_min', 0)
