@@ -124,7 +124,9 @@ class Tg:
             )
 
     async def send_mistakes(self, mistakes: List[str]):
-        _path = pathlib.Path(__file__).parent / 'logs' / f'{datetime.now()}_dump.txt'
+        _path = (
+            pathlib.Path(__file__).parent / 'logs' / f'{datetime.now()}_dump.txt'
+        ).absolute()
         with open(_path, 'w') as _file:
             json.dump(mistakes, _file, indent=4)
         try:

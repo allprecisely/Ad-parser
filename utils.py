@@ -56,7 +56,9 @@ def init_logger(level: str = 'INFO'):
     sh.setFormatter(formatter)
     logger.addHandler(sh)
 
-    log_path = pathlib.Path(__file__).parent / 'logs' / f'{datetime.now()}_log.txt'
+    log_path = (
+        pathlib.Path(__file__).parent / 'logs' / f'{datetime.now()}_log.txt'
+    ).absolute()
     fh = logging.FileHandler(log_path)
     fh.setFormatter(formatter)
     logger.addHandler(fh)

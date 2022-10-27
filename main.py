@@ -9,11 +9,11 @@ from tg import Tg
 from utils import init_logger
 from ads_handler import filter_users_by_ads, filter_ads_from_http
 
-logger = logging.getLogger(__name__)
 
 
 def main(argv: Optional[List[str]] = None):
     init_logger()
+    logger = logging.getLogger(__name__)
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--disable', nargs='*', default=[])
@@ -40,6 +40,7 @@ def main(argv: Optional[List[str]] = None):
     users_settings = storage.get_users_settings()
     users_ad_params = storage.get_users_ad_params()
     users_by_ads = filter_users_by_ads(users_ad_params, new_ads, users_settings)
+    logger.info('new_ads: %s\nusers_by_ads: %s', new_ads, users_by_ads)
     asyncio.run(tg.send_ads(users_by_ads, new_ads, users_settings))
 
 

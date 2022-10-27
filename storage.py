@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+import pathlib
 from typing import Any, Dict, Optional
 import sqlite3
 
@@ -10,8 +11,9 @@ logger = logging.getLogger(__name__)
 
 class Storage:
     def __init__(self) -> None:
+        _path = (pathlib.Path(__file__).parent / 'storage.db').absolute()
         self.con = sqlite3.connect(
-            "storage.db", detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+            _path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
         )
         self.cur = self.con.cursor()
         self.create_tables()
