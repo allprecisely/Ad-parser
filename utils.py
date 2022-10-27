@@ -1,17 +1,12 @@
 from dataclasses import dataclass, field
 from datetime import datetime
+import pathlib
 from typing import Any, Dict, List, Optional
 import logging
 
 from settings import *
 
 logger = logging.getLogger(__name__)
-
-# {category_name: {ad_id: {**ad_props_by_category}}}
-ADS_DICT = Dict[str, Dict[str, Dict[str, Any]]]
-
-# {category_name: {user_id: {**user_props_by_category}}}
-USERS_DICT = Dict[str, Dict[str, Dict[str, Any]]]
 
 
 @dataclass
@@ -41,7 +36,7 @@ class HttpFilter:
         return '&'.join(filters)
 
     def http_query(self) -> str:
-        filters = []
+        filters: List[str] = []
         for filter_name, value in self.custom_filters.items():
             values = value if isinstance(value, list) else [value]
             filters.extend((f'{filter_name}---{v}' for v in values))
@@ -53,14 +48,17 @@ class HttpFilter:
 def init_logger(level: str = 'INFO'):
     logger = logging.getLogger('')
     logger.setLevel(level)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
 
     sh = logging.StreamHandler()
     sh.setFormatter(formatter)
     logger.addHandler(sh)
 
-    fh = logging.FileHandler(f'logs/{datetime.now()}_log.txt')
+    log_path = pathlib.Path(__file__).parent / 'logs' / f'{datetime.now()}_log.txt'
+    fh = logging.FileHandler(log_path)
     fh.setFormatter(formatter)
     logger.addHandler(fh)
-    
+
     logger.info('Logger initiated. Level = %s', level)

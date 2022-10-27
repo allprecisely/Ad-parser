@@ -1,15 +1,13 @@
 from datetime import datetime
 import json
-from time import time
-from typing import Any, Dict, List, Tuple
+import time
+from typing import Any, Dict, List, Tuple, Union
 import logging
 
 import telegram
 from telegram.request import HTTPXRequest
 
-from mistakes import MISTAKES
 from settings import *
-from utils import ADS_DICT
 
 logger = logging.getLogger(__name__)
 ERR_PREFIX = 'Something went wrong while upload, '
@@ -24,21 +22,26 @@ class Tg:
     async def send_ads(
         self,
         users_by_ads: Dict[str, Dict[str, List[str]]],
-        new_ads: ADS_DICT,
+        new_ads: ADS_BY_CATEGORY_TYPE,
         users_settings: Any,
     ) -> None:
         logger.info('Sending ads')
         for category, ads in users_by_ads.items():
             for ad_id, user_ids in ads.items():
-                message = self._form_message(category, new_ads[ad_id])
+                message = self._form_message(category, new_ads[category][ad_id])
                 for user_id in user_ids:
                     await self._send_media_ad(
-                        message, user_id, users_settings, new_ads[ad_id].get('coords')
+                        message,
+                        user_id,
+                        users_settings,
+                        new_ads[category][ad_id]['coords'],
                     )
         if MISTAKES:
             await self.send_mistakes(MISTAKES)
 
-    def _form_message(self, category: str, ad: Dict[str, Any]) -> Any:
+    def _form_message(
+        self, category: str, ad: AD_TYPE
+    ) -> Union[str, List[telegram.InputMediaPhoto]]:
         extra = CATEGORIES_PROPS[category]['description'].format(**ad)
         description = TEMPLATE_DESCRIPTION.format(**ad, extra=extra)
         if lowered := ad.get('lowered'):
@@ -69,7 +72,7 @@ class Tg:
 
     async def _send_media_ad(
         self,
-        message: Any,
+        message: Union[str, List[telegram.InputMediaPhoto]],
         user_id: str,
         users_settings: Any,
         coords: Tuple[float, float],

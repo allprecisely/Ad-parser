@@ -79,6 +79,7 @@ TG_CATEGORIES = {
                 ['area_min', 'area_max'],
                 ['bedrooms', 'furnishing'],
                 ['pets', 'excluded_words'],
+                ['short_term'],
             ]
         ),
     },
@@ -124,7 +125,7 @@ class TgUpdater:
         await self.load_user_data(update, context)
         query = update.callback_query
         await query.answer()
-        if query.data.startswith('checkbox_'):
+        if query.data.startswith('checkbox|'):
             return await self.handle_btn_checkbox(update, context)
         elif query.data == TEXTS['delete']:
             await self.handle_btn_delete(update, context)
@@ -145,7 +146,7 @@ class TgUpdater:
             await query.edit_message_text('Session expired. Retry')
             return await self.show_main_screen(update, context, SWW_TEXT)
         keyboard = query.message.reply_markup.inline_keyboard
-        _, field, value = query.data.split('_')
+        _, field, value = query.data.split('|')
         for i, keys in enumerate(keyboard):
             for j, key in enumerate(keys):
                 if query.data != key['callback_data']:
@@ -359,7 +360,7 @@ class TgUpdater:
                 [
                     InlineKeyboardButton(
                         f'{x}' + SELECTED_SIGN * (x in selected),
-                        callback_data=f'checkbox_{field}_{x}',
+                        callback_data=f'checkbox|{field}|{x}',
                     )
                 ]
                 for x in CHECKBOX[field]
@@ -387,7 +388,7 @@ class TgUpdater:
 
         if status := context.user_data['settings']:
             buttons.append([KB['history']])
-            buttons.append([KB['stop'] if status else KB['run']])
+            buttons.append([KB['stop'] if status['active'] else KB['run']])
 
         markup = ReplyKeyboardMarkup(buttons)
         await update.effective_chat.send_message(text, reply_markup=markup)

@@ -1,18 +1,16 @@
 from collections import defaultdict
 import logging
-from typing import Any, Dict, List
-from mistakes import MISTAKES
+from typing import Any, Dict, List, Optional
 
 from http_client import Client
 from settings import *
-from utils import ADS_DICT
 
 logger = logging.getLogger(__name__)
 
 
 def filter_ads_from_http(
     http_client: Client, saved_ads: Dict[str, Dict[str, int]], disabled: List[str]
-) -> ADS_DICT:
+) -> ADS_BY_CATEGORY_TYPE:
     logger.info('Parsing ads from http')
     ads = {}
     for category, props in CATEGORIES_PROPS.items():
@@ -22,23 +20,24 @@ def filter_ads_from_http(
 
 
 def filter_users_by_ads(
-    users_ad_params: Dict[str, List[Dict[str, Any]]],
-    new_ads: ADS_DICT,
-    users_settings: Dict[str, Any],
-) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    users_ad_params: USERS_PARAMS_BY_CATEGORY_TYPE,
+    new_ads: ADS_BY_CATEGORY_TYPE,
+    users_settings: Any,
+) -> Dict[str, Dict[str, List[str]]]:
     logger.info('Filtering users by ads')
-    users_by_ads = {category: defaultdict(list) for category in CATEGORIES_PROPS}
+    users_by_ads: Dict[str, Dict[str, List[str]]] = {
+        category: defaultdict(list) for category in CATEGORIES_PROPS
+    }
     for category, ads in new_ads.items():
         for ad in ads.values():
-            district = ad['location'].split()[0]
+            ad_city = ad['location'].split()[0]
             try:
                 for user_id, user_props in users_ad_params[category].items():
-                    short_term = users_settings.get(user_id, {}).get(
-                        'show_short_term_rent'
-                    )
-                    if filtered_common(
-                        user_props, ad, district
-                    ) and filtered_by_category(category, ad, short_term):
+                    if (
+                        users_settings.get('active')
+                        and filtered_common(user_props, ad, ad_city)
+                        and filtered_by_category(user_props, ad, category)
+                    ):
                         users_by_ads[category][ad['id']].append(user_id)
             except Exception as exc:
                 logger.exception(f'Could not filter ad {ad}  Exception: {exc}')
@@ -46,13 +45,11 @@ def filter_users_by_ads(
     return users_by_ads
 
 
-def filtered_common(user, ad, district) -> bool:
+def filtered_common(user, ad, ad_city) -> bool:
     return (
-        district in user['cities']
+        ad_city in user['cities']
         and user['radius'] >= ad['radius']
-        and user.get('price_min', 0)
-        <= ad['price']
-        <= user.get('price_max', float('inf'))
+        and _between(user, ad, 'price')
         and all(
             word.strip() not in ad['name']
             for word in user.get('excluded_words', '').split(',')
@@ -60,29 +57,35 @@ def filtered_common(user, ad, district) -> bool:
     )
 
 
-def filtered_by_category(user, ad, category, short_term: bool) -> bool:
+def filtered_by_category(user, ad, category) -> bool:
     if category == CATEGORY_RENT:
         return (
-            user.get('area_min', 0)
-            <= int(ad['area'].split()[0])
-            <= user.get('area_max', float('inf'))
-            and user.get('pets', ad['pets']) == ad['pets']
-            and ad['furnishing'] in user.get('furnishing', [ad['furnishing']])
-            and ad['bedrooms'] in user.get('bedrooms', ad['bedrooms']).split(',')
-            and (not ad.get('short_term') or short_term)
+            _between(user, ad, 'area')
+            and _in(user, ad, 'pets')
+            and _in(user, ad, 'furnishing')
+            and _in(user, ad, 'bedrooms')
+            and _in(user, ad, 'short_term')
         )
     elif category == CATEGORY_MOTORBIKES:
-        return user.get('mileage_min', 0) <= int(ad['mileage'].split()[0]) <= user.get(
-            'mileage_max', float('inf')
-        ) and ad['type'] in user.get('types', ad['type'])
+        return _between(user, ad, 'mileage') and _eq(user, ad, 'type', 'types')
     elif category == CATEGORY_CARS:
         return (
-            user.get('mileage_min', 0)
-            <= int(ad['mileage'].split()[0])
-            <= user.get('mileage_max', float('inf'))
-            and ad['gearbox'] in user.get('gearbox', [ad['gearbox']])
-            and user.get('year_min', 0)
-            <= int(ad['year'])
-            <= user.get('year_max', float('inf'))
-            and ad['fuel'] in user.get('fuel', [ad['fuel']])
+            _between(user, ad, 'mileage')
+            and _between(user, ad, 'year')
+            and _in(user, ad, 'gearbox')
+            and _in(user, ad, 'fuel')
+            and _in(user, ad, 'type', 'types')
         )
+    else:
+        return False
+
+
+def _between(user, ad, prop: str, u_prop: Optional[str] = None) -> bool:
+    u_prop = u_prop or prop
+    if not (a := ad.get(prop)):
+        return True
+    return user.get(f'{u_prop}_min', 0) <= a <= user.get(f'{u_prop}_max', float('inf'))
+
+
+def _in(user, ad, prop: str, u_prop: Optional[str] = None) -> bool:
+    return ((a := ad.get(prop)) and (u := user.get(u_prop or prop))) or a in u

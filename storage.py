@@ -1,10 +1,9 @@
 from datetime import datetime
 import logging
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional
 import sqlite3
 
 from settings import *
-from utils import ADS_DICT, USERS_DICT
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class Storage:
             ad_history_ids[category] = {i[0]: i[1] for i in res.fetchall()}
         return ad_history_ids
 
-    def upsert_new_ads(self, new_ads: ADS_DICT) -> None:
+    def upsert_new_ads(self, new_ads: ADS_BY_CATEGORY_TYPE) -> None:
         logger.info('Upserting new ads')
         for category, ads in new_ads.items():
             existed_fields = (
@@ -62,7 +61,9 @@ class Storage:
                 )
         self.con.commit()
 
-    def get_users_ad_params(self, user_id: Optional[str] = None) -> USERS_DICT:
+    def get_users_ad_params(
+        self, user_id: Optional[str] = None
+    ) -> USERS_PARAMS_BY_CATEGORY_TYPE:
         logger.info('Gettings users ad params')
         users = {}
         for category, category_props in CATEGORIES_PROPS.items():
@@ -83,7 +84,7 @@ class Storage:
         return users
 
     def upsert_user_ad_params(
-        self, user_id: str, category: str, ad_params: Dict[str, Any]
+        self, user_id: str, category: str, ad_params: USER_PARAMS_TYPE
     ) -> None:
         filtered = {
             k: v
@@ -126,7 +127,7 @@ class Storage:
             for x in fetched
         }
 
-    def upsert_user_settings(self, user_id: str, **kwargs) -> bool:
+    def upsert_user_settings(self, user_id: str, **kwargs) -> None:
         kwargs['id'] = user_id
         kwargs['updated_at'] = datetime.utcnow()
         fields = ','.join(kwargs)
@@ -145,5 +146,5 @@ class Storage:
         self.cur.execute(f'DELETE FROM users_{category} WHERE id = ?', (user_id,))
         self.con.commit()
 
-    def get_ads_for_user_in_interval(self) -> ADS_DICT:
+    def get_ads_for_user_in_interval(self) -> ADS_BY_CATEGORY_TYPE:
         pass

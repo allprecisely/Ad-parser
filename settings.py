@@ -1,11 +1,26 @@
 import os
+from typing import Any, Dict, List
 
 from dotenv import load_dotenv
+
+# TYPES
+# {category: {ad_id: {id: 123, price: 123...}}}
+AD_TYPE = Dict[str, Any]
+ADS_TYPE = Dict[str, AD_TYPE]
+ADS_BY_CATEGORY_TYPE = Dict[str, ADS_TYPE]
+
+# {category: {user_id: {id: uid, area: 30...}}}
+USER_PARAMS_TYPE = Dict[str, Any]
+USERS_PARAMS_TYPE = Dict[str, USER_PARAMS_TYPE]
+USERS_PARAMS_BY_CATEGORY_TYPE = Dict[str, USERS_PARAMS_TYPE]
+
+# {category: {ad_id: {user_id: {id: uid, }}}}
 
 # COMMON SETTINGS
 load_dotenv()
 TOKEN = os.environ['TOKEN']
 STORAGE_CHAT_ID = os.environ['STORAGE_CHAT_ID']
+MISTAKES: List[Any] = []
 
 DAYS_TO_EXPIRE = 14
 
@@ -33,6 +48,7 @@ CHECKBOX = {
     'pets': ('only ads with allowed pets',),
     'bedrooms': ('1', '2', '3', '4', '5', 'Studio', '6 and more'),
     'cities': tuple(CITIES),
+    'short_term': ('Show short term ads',),
 }
 
 USERS_FIELDS = (
@@ -41,14 +57,12 @@ USERS_FIELDS = (
     'show_location',
     'without_sound',
     'ads_without_photo',
-    'show_short_term_rent',
     'history_asked_at',
     'created_at',
     'updated_at',
 )
 USER_FIELDS_TO_SHOW = (
     'show_location',
-    'show_short_term_rent',
     'without_sound',
     'ads_without_photo',
 )
@@ -68,6 +82,7 @@ USERS_RENT_FIELDS = USERS_COMMON_FIELDS + (
     'parking',
     'furnishing',
     'bedrooms',
+    'short_term',
 )
 USERS_MOTORBIKES_FIELDS = USERS_COMMON_FIELDS + (
     'mileage_min',
@@ -104,6 +119,8 @@ EVALED_USERS_FIELDS = {
     'bedrooms',
     'gearbox',
     'cities',
+    'pets',
+    'short_term',
 }
 
 TEMPLATE_DESCRIPTION = '''{name}
@@ -121,7 +138,7 @@ CATEGORY_TEXT_MOTORBIKES = (
 )
 CATEGORY_TEXT_CARS = 'year: {year}, mileage: {mileage} km, gearbox: {gearbox}, fuel: {fuel}, condition: {condition}'
 
-CATEGORIES_PROPS = {
+CATEGORIES_PROPS: Dict[str, Dict[str, Any]] = {
     CATEGORY_RENT: {
         'name': CATEGORY_RENT,
         'price_max': 2500,
