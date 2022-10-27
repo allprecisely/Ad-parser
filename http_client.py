@@ -2,16 +2,16 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 import logging
 import re
-import string
+# import string
 import time
 from typing import Any, Dict
 
 from bs4 import BeautifulSoup
 from requests import Response
-from distance_counter import haversine
-from translate import Translator
+# from translate import Translator
 import requests
 
+from distance_counter import haversine
 from mistakes import MISTAKES
 from settings import *
 from utils import ADS_DICT, HttpFilter
@@ -23,6 +23,8 @@ TIME_FORMAT = '%d.%m.%Y'
 class Client:
     def __init__(self):
         self.session = requests.Session()
+        # self.translator = Translator(to_lang="en", from_lang='el')
+        # self.translator = LibreTranslateAPI("https://translate.argosopentech.com/")
 
     def get_updates(self, category: ADS_DICT) -> ADS_DICT:
         ads = {}
@@ -33,17 +35,26 @@ class Client:
 
         for subcategory in category.get('subcategories', [category]):
             ads.update(self._get_ads(f"{BAZARAKI_URL}/{subcategory['path']}/{_filter}"))
+        if category['name'] == CATEGORY_RENT:
+            short_term_ads = self._get_ads(
+                f"{BAZARAKI_URL}/real-estate-to-rent/short-term/{_filter}"
+            )
+            for ad in short_term_ads.values():
+                ad['short_term'] = True
+                if ad['price'] <= 800:
+                    ad['price'] *= 30
+            ads.update(short_term_ads)
 
         return ads
 
     def enrich_new_ads(self, ads_dict: ADS_DICT) -> None:
-        translator = Translator(to_lang="en", from_lang='el')
+        logger.info('Enriching new ads')
         for category_name, ads in ads_dict.items():
             for ad in ads.values():
                 response = self._get_with_retries(ad['url'], 5)
                 if response.status_code >= 400:
                     continue
-                ad.update(self._parse_ad_page(response, ad, translator, category_name))
+                ad.update(self._parse_ad_page(response, ad, category_name))
 
     def _get_ads(self, url: str) -> ADS_DICT:
         response = self._get_with_retries(url, 5)
@@ -144,11 +155,7 @@ class Client:
         return {item['id']: item}
 
     def _parse_ad_page(
-        self,
-        response: Response,
-        ad_props: Dict[str, Any],
-        translator: Translator,
-        category_name: str,
+        self, response: Response, ad_props: Dict[str, Any], category_name: str
     ) -> Dict[str, Any]:
         info = {}
 
@@ -186,8 +193,8 @@ class Client:
             description = description_tag.p.string.strip()
             if description:
                 description = description[:150] + '...' * (len(description) > 150)
-                if any(c not in string.printable for c in description):
-                    description = translator.translate(description)
+                # if any(c not in string.printable for c in description):
+                #     description = self.translator.translate(description)
                 info['description'] = description
 
         ul_tag = soup.body.find('ul', attrs={'class': 'chars-column'})

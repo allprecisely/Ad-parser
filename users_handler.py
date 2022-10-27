@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from telegram import (
     InlineKeyboardButton,
@@ -19,6 +19,7 @@ from telegram.ext import (
 
 from settings import *
 from storage import Storage
+from utils import init_logger
 
 CTX = ContextTypes.DEFAULT_TYPE
 SAVE_PREFIX = 'Current parameters are:'
@@ -55,9 +56,6 @@ KB = {
 IKM = {
     'save': InlineKeyboardMarkup(
         [[InlineKeyboardButton(TEXTS['save'], callback_data=TEXTS['save'])]]
-    ),
-    'delete': InlineKeyboardMarkup(
-        [[InlineKeyboardButton(TEXTS['delete'], callback_data=TEXTS['delete'])]]
     ),
     'delete': InlineKeyboardMarkup(
         [[InlineKeyboardButton(TEXTS['delete'], callback_data=TEXTS['delete'])]]
@@ -453,5 +451,6 @@ class TgUpdater:
 
 
 if __name__ == '__main__':
+    init_logger()
     tg_updater = TgUpdater()
     tg_updater.run()

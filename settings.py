@@ -43,11 +43,17 @@ USERS_FIELDS = (
     'show_location',
     'without_sound',
     'ads_without_photo',
+    'show_short_term_rent',
     'history_asked_at',
     'created_at',
     'updated_at',
 )
-USER_FIELDS_TO_SHOW = ('show_location', 'without_sound', 'ads_without_photo')
+USER_FIELDS_TO_SHOW = (
+    'show_location',
+    'show_short_term_rent',
+    'without_sound',
+    'ads_without_photo',
+)
 USERS_COMMON_FIELDS = (
     'id',
     'cities',

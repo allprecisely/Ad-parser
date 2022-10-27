@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 import logging
 
@@ -52,10 +53,14 @@ class HttpFilter:
 def init_logger(level: str = 'INFO'):
     logger = logging.getLogger('')
     logger.setLevel(level)
-    logger.addHandler(logging.StreamHandler())
-    logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO
-    )
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    sh = logging.StreamHandler()
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
+
+    fh = logging.FileHandler(f'logs/{datetime.now()}_log.txt')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
     
     logger.info('Logger initiated. Level = %s', level)

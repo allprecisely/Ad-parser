@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import logging
 from typing import List, Optional
-from mistakes import MISTAKES
 from storage import Storage
 
 from http_client import Client
@@ -39,9 +38,9 @@ def main(argv: Optional[List[str]] = None):
     # do not send ads, if storage was empty
     new_ads = {k: v for k, v in new_ads.items() if saved_ads.get(k)}
 
-    users_ad_params = storage.get_users_ad_params()
-    users_by_ads = filter_users_by_ads(users_ad_params, new_ads)
     users_settings = storage.get_users_settings()
+    users_ad_params = storage.get_users_ad_params()
+    users_by_ads = filter_users_by_ads(users_ad_params, new_ads, users_settings)
     asyncio.run(tg.send_ads(users_by_ads, new_ads, users_settings))
 
 

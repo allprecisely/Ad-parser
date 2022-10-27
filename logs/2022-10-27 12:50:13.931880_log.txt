@@ -1,0 +1,10 @@
+2022-10-27 12:50:13,932 - root - INFO - Logger initiated. Level = INFO
+2022-10-27 12:50:13,968 - storage - INFO - Getting saved ads
+2022-10-27 12:50:13,969 - ads_handler - INFO - Parsing ads from http
+2022-10-27 12:50:24,625 - ads_handler - INFO - Filtering new ads
+2022-10-27 12:50:24,626 - http_client - INFO - Enriching new ads
+2022-10-27 12:50:24,626 - storage - INFO - Upserting new ads
+2022-10-27 12:50:24,626 - storage - INFO - Getting users settings
+2022-10-27 12:50:24,626 - storage - INFO - Gettings users ad params
+2022-10-27 12:50:24,627 - ads_handler - INFO - Filtering users by ads
+2022-10-27 12:50:24,627 - tg - INFO - Sending ads

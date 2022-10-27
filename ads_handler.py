@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_ads_from_http(http_client: Client, disabled: List[str]) -> ADS_DICT:
+    logger.info('Parsing ads from http')
     ads = {}
     for category, props in CATEGORIES_PROPS.items():
         if category not in disabled:
@@ -21,6 +22,7 @@ def parse_ads_from_http(http_client: Client, disabled: List[str]) -> ADS_DICT:
 def filter_new_ads(
     saved_ads: Dict[str, Dict[str, int]], new_ads_from_site: ADS_DICT
 ) -> ADS_DICT:
+    logger.info('Filtering new ads')
     new_ads = {category: {} for category in CATEGORIES_PROPS}
     for category, ads in new_ads_from_site.items():
         for ad_id, props in ads.items():
@@ -34,17 +36,21 @@ def filter_new_ads(
 
 
 def filter_users_by_ads(
-    users_ad_params: Dict[str, List[Dict[str, Any]]], new_ads: ADS_DICT
+    users_ad_params: Dict[str, List[Dict[str, Any]]],
+    new_ads: ADS_DICT,
+    users_settings: Dict[str, Any],
 ) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+    logger.info('Filtering users by ads')
     users_by_ads = {category: defaultdict(list) for category in CATEGORIES_PROPS}
     for category, ads in new_ads.items():
         for ad in ads.values():
             district = ad['location'].split()[0]
             try:
                 for user_id, user_props in users_ad_params[category].items():
+                    short_term = users_settings.get(user_id, {}).get('show_short_term_rent')
                     if filtered_common(
                         user_props, ad, district
-                    ) and filtered_by_category(category, ad):
+                    ) and filtered_by_category(category, ad, short_term):
                         users_by_ads[category][ad['id']].append(user_id)
             except Exception as exc:
                 logger.exception(f'Could not filter ad {ad}  Exception: {exc}')
@@ -65,7 +71,8 @@ def filtered_common(user, ad, district) -> bool:
         )
     )
 
-def filtered_by_category(user, ad, category) -> bool:
+
+def filtered_by_category(user, ad, category, short_term: bool) -> bool:
     if category == CATEGORY_RENT:
         return (
             user.get('area_min', 0)
@@ -74,6 +81,7 @@ def filtered_by_category(user, ad, category) -> bool:
             and user.get('pets', ad['pets']) == ad['pets']
             and ad['furnishing'] in user.get('furnishing', [ad['furnishing']])
             and ad['bedrooms'] in user.get('bedrooms', ad['bedrooms']).split(',')
+            and (not ad.get('short_term') or  short_term)
         )
     elif category == CATEGORY_MOTORBIKES:
         return (

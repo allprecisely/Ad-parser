@@ -33,6 +33,7 @@ class Storage:
         self.cur.execute(f'CREATE TABLE IF NOT EXISTS users(id PRIMARY KEY,{fields})')
 
     def get_saved_ads(self) -> Dict[str, Dict[str, int]]:
+        logger.info('Getting saved ads')
         ad_history_ids = {}
         for category in CATEGORIES_PROPS:
             res = self.cur.execute(f'SELECT id,price FROM {category}')
@@ -40,6 +41,7 @@ class Storage:
         return ad_history_ids
 
     def upsert_new_ads(self, new_ads: ADS_DICT) -> None:
+        logger.info('Upserting new ads')
         for category, ads in new_ads.items():
             existed_fields = (
                 AD_COMMON_FIELDS + CATEGORIES_PROPS[category]['category_fields']
@@ -61,6 +63,7 @@ class Storage:
         self.con.commit()
 
     def get_users_ad_params(self, user_id: Optional[str] = None) -> USERS_DICT:
+        logger.info('Gettings users ad params')
         users = {}
         for category, category_props in CATEGORIES_PROPS.items():
             fields = ','.join(category_props['users_fields'])
@@ -68,7 +71,7 @@ class Storage:
             if user_id:
                 query += f' WHERE id = {user_id}'
             users[category] = {
-                row[0]: dict(zip(category_props['users_fields'], row))
+                row[0]: {k: v for k, v in zip(category_props['users_fields'], row) if v}
                 for row in self.cur.execute(query).fetchall()
             }
             for user_props_by_category in users[category].values():
@@ -106,14 +109,22 @@ class Storage:
         self.con.commit()
 
     def get_users_settings(self, user_id: Optional[str] = None) -> Optional[Any]:
+        logger.info('Getting users settings')
         query = f'SELECT {",".join(USERS_FIELDS)} FROM users'
         if user_id:
             query += f' WHERE id = {user_id}'
         res = self.cur.execute(query)
         fetched = res.fetchall()
         if user_id:
-            return dict(zip(USERS_FIELDS, fetched[0])) if fetched else None
-        return {x[0]: dict(zip(USERS_FIELDS, x)) for x in fetched}
+            return (
+                {k: v for k, v in zip(USERS_FIELDS, fetched[0]) if v is not None}
+                if fetched
+                else None
+            )
+        return {
+            x[0]: {k: v for k, v in zip(USERS_FIELDS, x) if v is not None}
+            for x in fetched
+        }
 
     def upsert_user_settings(self, user_id: str, **kwargs) -> bool:
         kwargs['id'] = user_id

@@ -27,6 +27,7 @@ class Tg:
         new_ads: ADS_DICT,
         users_settings: Any,
     ) -> None:
+        logger.info('Sending ads')
         for category, ads in users_by_ads.items():
             for ad_id, user_ids in ads.items():
                 message = self._form_message(category, new_ads[ad_id])
@@ -98,23 +99,24 @@ class Tg:
         coords: Tuple[float, float],
         attempts: int,
     ) -> None:
-        disable_notification = ads_without_photo = False
-        if settings := users_settings.get(user_id):
-            disable_notification = settings.get('without_sound', False)
-            ads_without_photo = settings.get('ads_without_photo', False)
-            if settings.get('show_location') and coords:
-                await self.bot.send_location(
-                    user_id, *coords, disable_notification=disable_notification
-                )
-        if isinstance(message, list):
+        settings = users_settings.get(user_id)
+        without_sound = settings.get('without_sound', False)
+        with_photo = isinstance(message, list)
+        if not (with_photo or settings.get('ads_without_photo')):
+            return
+        if settings.get('show_location') and coords:
+            await self.bot.send_location(
+                user_id, *coords, disable_notification=without_sound
+            )
+        if with_photo:
             await self.bot.send_media_group(
                 media=message[:attempts] + message[attempts + 1 :],
                 chat_id=user_id,
-                disable_notification=disable_notification,
+                disable_notification=without_sound,
             )
-        if ads_without_photo:
+        else:
             await self.bot.send_message(
-                user_id, message, disable_notification=disable_notification
+                user_id, message, disable_notification=without_sound
             )
 
     async def send_mistakes(self, mistakes: List[str]):
