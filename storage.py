@@ -147,6 +147,12 @@ class Storage:
     def delete_user_params_by_category(self, user_id: str, category: str) -> None:
         self.cur.execute(f'DELETE FROM users_{category} WHERE id = ?', (user_id,))
         self.con.commit()
+    
+    def delete_user(self, user_id: str) -> None:
+        for category in CATEGORIES_PROPS:
+            self.cur.execute(f'DELETE FROM users_{category} WHERE id = ?', (user_id,))
+        self.cur.execute(f'DELETE FROM users WHERE id = ?', (user_id,))
+        self.con.commit()
 
     def get_ads_for_user_in_interval(self) -> ADS_BY_CATEGORY_TYPE:
         pass

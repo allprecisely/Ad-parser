@@ -8,8 +8,10 @@ from telegram import (
     ReplyKeyboardMarkup,
     Update,
 )
+from telegram.constants import ChatMemberStatus
 from telegram.ext import (
     ApplicationBuilder,
+    ChatMemberHandler,
     ContextTypes,
     CommandHandler,
     MessageHandler,
@@ -29,7 +31,7 @@ Hello! I can find new ads about rent house/flat or buying car/motorbike on Cypru
 For start searching, press Start and put cryterias.
 '''
 CHOOSE_CATEGORY_TEXT = (
-    'You should choose at least any city and the radius to start polling ads.'
+    'You should choose at least any city and the distance to city center to start polling ads.'
 )
 MAIN_SCREEN_TEXT = 'Choose category to set up searching parameters'
 SWW_TEXT = 'Something went wrong. Try to choose category again'
@@ -61,11 +63,31 @@ IKM = {
         [[InlineKeyboardButton(TEXTS['delete'], callback_data=TEXTS['delete'])]]
     ),
 }
+BTNS_TEXTS = {
+    'cities': 'cities',
+    'radius': 'distance to city center (km)',
+    'price_min': 'price min',
+    'price_max': 'price max',
+    'area_min': 'area min (m²)',
+    'area_max': 'area max (m²)',
+    'bedrooms': 'number of rooms',
+    'furnishing': 'furnishing',
+    'pets': 'pets allowance',
+    'excluded_words': 'forbidden words in the title',
+    'short_term': 'inclusion short-term ads',
+    'mileage_min': 'mileage min (km)',
+    'mileage_max': 'mileage max (km)',
+    'types': 'types',
+    'year_min': 'year min',
+    'year_max': 'year max',
+    'gearbox': 'transmission (manual/auto)',
+}
+BTNS_TEXTS_VV = {v: k for k, v in BTNS_TEXTS.items()}
 
 
 def generate_buttons(btns_text) -> List[List[KeyboardButton]]:
     return [
-        [KeyboardButton(f'{TEXTS["choose"]} {t}') for t in g]
+        [KeyboardButton(BTNS_TEXTS[t]) for t in g]
         for g in [['cities', 'radius'], ['price_min', 'price_max']] + btns_text
     ] + [[KeyboardButton(TEXTS['save']), KeyboardButton(TEXTS['back'])]]
 
@@ -108,6 +130,7 @@ class TgUpdater:
     def __init__(self) -> None:
         self.application = ApplicationBuilder().token(TOKEN).build()
         self.application.add_handler(CommandHandler('start', self.handle_cmd_start))
+        self.application.add_handler(ChatMemberHandler(self.handle_membership))
         self.application.add_handler(CallbackQueryHandler(self.handle_btn))
         self.application.add_handler(MessageHandler(filters.TEXT, self.handle_text))
 
@@ -121,11 +144,18 @@ class TgUpdater:
         await self.handle_last_message(context)
         await self.show_main_screen(update, context)
 
+    async def handle_membership(self, update: Update, context: CTX):
+        if update.my_chat_member.new_chat_member.status == ChatMemberStatus.BANNED:
+            context.user_data.clear()
+            self.storage.delete_user(update.effective_user.id)
+
     async def handle_btn(self, update: Update, context: CTX):
         await self.load_user_data(update, context)
         query = update.callback_query
         await query.answer()
-        if query.data.startswith('checkbox|'):
+        if query.data == 'ok':
+            await self.handle_last_message(context)
+        elif query.data.startswith('checkbox|'):
             return await self.handle_btn_checkbox(update, context)
         elif query.data == TEXTS['delete']:
             await self.handle_btn_delete(update, context)
@@ -204,6 +234,10 @@ class TgUpdater:
             self.storage.upsert_user_settings(
                 user_id, created_at=datetime.utcnow(), active=False
             )
+        text = 'You can set up another search'
+        if not context.user_data['settings'].get('active'):
+            text += ' or run searching'
+
         await self.show_main_screen(update, context, 'You can set up another search')
 
     async def handle_btn_settings(self, update: Update, context: CTX):
@@ -259,7 +293,7 @@ class TgUpdater:
         if message_text == TEXTS['save']:
             return await self.handle_text_save(update, context)
 
-        if message_text.startswith(TEXTS["choose"]):
+        if message_text in BTNS_TEXTS.values():
             return await self.handle_text_choose(update, context)
 
         if context.user_data.get('last_message'):
@@ -296,12 +330,13 @@ class TgUpdater:
         keyboard = [
             [
                 InlineKeyboardButton(
-                    f'{x}' + SELECTED_SIGN * (settings.get(x) or False),
+                    x + f' {SELECTED_SIGN}' * (settings.get(x) or False),
                     callback_data=f'settings_{x}',
                 )
             ]
             for x in USER_FIELDS_TO_SHOW
         ]
+        keyboard.append([InlineKeyboardButton('ok', callback_data='ok')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         message = await update.message.reply_text(
@@ -349,7 +384,7 @@ class TgUpdater:
     async def handle_text_choose(self, update: Update, context: CTX):
         message_text = update.effective_message.text
         category = context.user_data['category']
-        field = message_text.split(maxsplit=1)[-1]
+        field = BTNS_TEXTS_VV[message_text]
         if 'min' in field or 'max' in field or field == 'radius':
             message = await update.message.reply_text(
                 TEXTS['prefix_choose_int'] + field
@@ -359,7 +394,7 @@ class TgUpdater:
             keyboard = [
                 [
                     InlineKeyboardButton(
-                        f'{x}' + SELECTED_SIGN * (x in selected),
+                        f'{x}' + f' {SELECTED_SIGN}' * (x in selected),
                         callback_data=f'checkbox|{field}|{x}',
                     )
                 ]
@@ -370,6 +405,7 @@ class TgUpdater:
                     [k[0] for k in keyboard[:5]],
                     [k[0] for k in keyboard[5:]],
                 ]
+            keyboard.append([InlineKeyboardButton('ok', callback_data='ok')])
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             message = await update.message.reply_text(

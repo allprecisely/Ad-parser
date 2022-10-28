@@ -7,4 +7,5 @@ tmp.py
 aws/
 tmp/
 storage.db
-logs
+logs/*.txt
+!.gitkeep
